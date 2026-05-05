@@ -1,12 +1,21 @@
 "use client";
 
 import { Box, Button, Flex, Heading, Stack, Text } from "@chakra-ui/react";
-import { Plus } from "lucide-react";
+import { CheckCircle2, Plus } from "lucide-react";
+import { useRef, useState } from "react";
 import { useCourseBuilder } from "./course-builder-context";
 import { ModuleCard } from "./module-card";
 
 export function CurriculumStep() {
   const { draft, addModule, totalLessons } = useCourseBuilder();
+  const [toastVisible, setToastVisible] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleLessonAdded = () => {
+    setToastVisible(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setToastVisible(false), 3000);
+  };
 
   return (
     <Stack gap={5}>
@@ -59,9 +68,45 @@ export function CurriculumStep() {
       {/* Modules list */}
       <Stack gap={3}>
         {draft.modules.map((m, idx) => (
-          <ModuleCard key={m.id} mod={m} index={idx} />
+          <ModuleCard
+            key={m.id}
+            mod={m}
+            index={idx}
+            onLessonAdded={handleLessonAdded}
+          />
         ))}
       </Stack>
+
+      {/* "Lesson added" toast */}
+      <Box
+        position="fixed"
+        bottom="80px"
+        right="24px"
+        bg="gray.900"
+        color="white"
+        rounded="lg"
+        px={4}
+        py={3}
+        boxShadow="lg"
+        minW="260px"
+        transition="opacity 0.3s, transform 0.3s"
+        opacity={toastVisible ? 1 : 0}
+        transform={toastVisible ? "translateY(0)" : "translateY(12px)"}
+        pointerEvents="none"
+        zIndex={100}
+      >
+        <Flex align="center" gap={3}>
+          <CheckCircle2 size={16} color="#4ADE80" />
+          <Stack gap={0}>
+            <Text fontWeight="semibold" fontSize="sm">
+              Lesson added
+            </Text>
+            <Text fontSize="xs" color="gray.400">
+              1 lesson has been added to curriculum
+            </Text>
+          </Stack>
+        </Flex>
+      </Box>
     </Stack>
   );
 }
