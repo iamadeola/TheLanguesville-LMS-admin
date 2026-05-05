@@ -9,7 +9,16 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { ChevronDown, ChevronUp, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Pencil,
+  Plus,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 import { type Module, useCourseBuilder } from "./course-builder-context";
 
@@ -18,9 +27,18 @@ interface ModuleCardProps {
   index: number;
 }
 
-export function ModuleCard({ mod, index }: ModuleCardProps) {
-  const { renameModule, removeModule, addLesson, setEditingLesson } =
-    useCourseBuilder();
+export function ModuleCard({
+  mod,
+  index,
+  onLessonAdded,
+}: ModuleCardProps & { onLessonAdded?: () => void }) {
+  const {
+    renameModule,
+    removeModule,
+    removeLesson,
+    addLesson,
+    setEditingLesson,
+  } = useCourseBuilder();
 
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -40,6 +58,7 @@ export function ModuleCard({ mod, index }: ModuleCardProps) {
   const handleAddLesson = () => {
     const lessonId = addLesson(mod.id);
     setEditingLesson({ moduleId: mod.id, lessonId });
+    onLessonAdded?.();
   };
 
   return (
@@ -144,27 +163,43 @@ export function ModuleCard({ mod, index }: ModuleCardProps) {
               borderColor="gray.200"
               rounded="md"
               px={3}
-              py={2}
-              cursor="pointer"
+              py={2.5}
               _hover={{ borderColor: "gray.300", bg: "gray.50" }}
-              onClick={() =>
-                setEditingLesson({
-                  moduleId: mod.id,
-                  lessonId: lesson.id,
-                })
-              }
             >
-              <Stack gap={0.5}>
-                <Text fontSize="xs" color="gray.500">
-                  Lesson {lessonIndex + 1}
+              <HStack
+                gap={2}
+                flex="1"
+                minW={0}
+                cursor="pointer"
+                onClick={() =>
+                  setEditingLesson({
+                    moduleId: mod.id,
+                    lessonId: lesson.id,
+                  })
+                }
+              >
+                <CheckCircle2 size={16} color="#16A34A" />
+                <Text
+                  fontSize="sm"
+                  fontWeight="medium"
+                  color="gray.900"
+                >
+                  {String(lessonIndex + 1).padStart(2, "0")} · {lesson.title}
                 </Text>
-                <Text fontSize="sm" fontWeight="medium" color="gray.900">
-                  {lesson.title}
-                </Text>
-              </Stack>
-              <Text fontSize="xs" color="gray.500">
-                {lesson.blocks.length} blocks
-              </Text>
+                <ChevronRight size={14} color="#9CA3AF" />
+              </HStack>
+              <IconButton
+                aria-label="Delete lesson"
+                variant="ghost"
+                size="xs"
+                color="#DC2626"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeLesson({ moduleId: mod.id, lessonId: lesson.id });
+                }}
+              >
+                <Trash2 size={14} />
+              </IconButton>
             </Flex>
           ))}
 

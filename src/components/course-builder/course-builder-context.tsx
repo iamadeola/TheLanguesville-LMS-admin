@@ -82,6 +82,7 @@ interface CourseBuilderContextValue {
 
   // Lesson actions
   addLesson: (moduleId: string) => string;
+  removeLesson: (ref: LessonRef) => void;
   renameLesson: (ref: LessonRef, title: string) => void;
 
   // Block actions
@@ -193,6 +194,18 @@ export function CourseBuilderProvider({ children }: { children: ReactNode }) {
         }));
         return lessonId;
       },
+      removeLesson: ({ moduleId, lessonId }) =>
+        setDraft((prev) => ({
+          ...prev,
+          modules: prev.modules.map((m) =>
+            m.id === moduleId
+              ? {
+                  ...m,
+                  lessons: m.lessons.filter((l) => l.id !== lessonId),
+                }
+              : m,
+          ),
+        })),
       renameLesson: ({ moduleId, lessonId }, title) =>
         setDraft((prev) => ({
           ...prev,

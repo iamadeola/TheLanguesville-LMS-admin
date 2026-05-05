@@ -76,7 +76,7 @@ function NewCourseFlow() {
   // Step 3 (review)
   return (
     <CourseBuilderShell
-      primaryLabel="Publish course"
+      primaryLabel="Publish"
       onPrimary={() => router.push("/courses")}
       onPrevious={() => setStep(2)}
     >
