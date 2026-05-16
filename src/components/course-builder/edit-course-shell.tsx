@@ -6,17 +6,17 @@ import {
   Flex,
   HStack,
   Heading,
-  IconButton,
   Text,
 } from "@chakra-ui/react";
-import { CheckCircle2, X } from "lucide-react";
+import { CheckCircle2, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { StepRail } from "./step-rail";
 
-interface CourseBuilderShellProps {
+interface EditCourseShellProps {
   children: ReactNode;
-  // Footer config
+  courseTitle: string;
+  courseId: string;
   primaryLabel?: string;
   primaryDisabled?: boolean;
   primaryLoading?: boolean;
@@ -25,15 +25,17 @@ interface CourseBuilderShellProps {
   hidePrevious?: boolean;
 }
 
-export function CourseBuilderShell({
+export function EditCourseShell({
   children,
-  primaryLabel = "Proceed",
+  courseTitle,
+  courseId,
+  primaryLabel = "Save changes",
   primaryDisabled = false,
   primaryLoading = false,
   onPrimary,
   onPrevious,
   hidePrevious = false,
-}: CourseBuilderShellProps) {
+}: EditCourseShellProps) {
   const router = useRouter();
 
   return (
@@ -55,42 +57,71 @@ export function CourseBuilderShell({
         borderColor="gray.200"
         flexShrink={0}
       >
-        <HStack gap={4}>
-          <HStack gap={2}>
-            <Box
-              w="32px"
-              h="32px"
-              rounded="md"
-              bg="#E8E9F5"
-              display="flex"
-              alignItems="center"
-              justifyContent="center"
-              color="#2E2F6F"
-              fontWeight="bold"
-            >
-              L
-            </Box>
-            <Text fontSize="xs" color="gray.500" lineHeight="1">
-              The
-              <br />
-              Languesville
-            </Text>
-          </HStack>
-          <Box w="1px" h="24px" bg="gray.200" />
-          <Heading as="h1" size="md" color="gray.900">
-            New Course
-          </Heading>
+        {/* Breadcrumb */}
+        <HStack gap={2} fontSize="sm">
+          <Text
+            color="#2E2F6F"
+            fontWeight="medium"
+            cursor="pointer"
+            onClick={() => router.push(`/courses/${courseId}`)}
+            _hover={{ textDecoration: "underline" }}
+          >
+            {courseTitle}
+          </Text>
+          <ChevronRight size={14} color="#9CA3AF" />
+          <Text color="gray.700" fontWeight="medium">
+            Curriculum
+          </Text>
         </HStack>
 
-        <IconButton
-          aria-label="Close course builder"
-          variant="outline"
-          rounded="full"
-          size="sm"
-          onClick={() => router.push("/courses")}
+        {/* Header title centred */}
+        <Heading
+          as="h1"
+          size="md"
+          color="gray.900"
+          position="absolute"
+          left="50%"
+          transform="translateX(-50%)"
+          pointerEvents="none"
         >
-          <X size={16} />
-        </IconButton>
+          Edit Course
+        </Heading>
+
+        {/* Cancel + Save */}
+        <HStack gap={2}>
+          <Button
+            variant="outline"
+            rounded="full"
+            h="36px"
+            px={5}
+            fontWeight="medium"
+            fontSize="sm"
+            onClick={() => router.push(`/courses/${courseId}`)}
+          >
+            Cancel
+          </Button>
+          <Button
+            bg="#2E2F6F"
+            color="white"
+            rounded="full"
+            h="36px"
+            px={5}
+            fontWeight="medium"
+            fontSize="sm"
+            _hover={{ bg: "#262760" }}
+            _disabled={{
+              bg: "#E5E7EB",
+              color: "#9CA3AF",
+              cursor: "not-allowed",
+              _hover: { bg: "#E5E7EB" },
+            }}
+            disabled={primaryDisabled || primaryLoading}
+            loading={primaryLoading}
+            onClick={onPrimary}
+          >
+            {primaryLabel}
+          </Button>
+        </HStack>
       </Flex>
 
       {/* Body: rail + content */}
@@ -108,7 +139,7 @@ export function CourseBuilderShell({
         </Box>
 
         <Box flex="1" overflowY="auto" px={8} py={6}>
-          <Box maxW="640px" mx="auto">
+          <Box maxW="720px" mx="auto">
             {children}
           </Box>
         </Box>
@@ -131,7 +162,7 @@ export function CourseBuilderShell({
         </HStack>
 
         <HStack gap={3}>
-          {!hidePrevious ? (
+          {!hidePrevious && (
             <Button
               variant="outline"
               rounded="full"
@@ -144,7 +175,7 @@ export function CourseBuilderShell({
             >
               Previous
             </Button>
-          ) : null}
+          )}
           <Button
             bg="#2E2F6F"
             color="white"

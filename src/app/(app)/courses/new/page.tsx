@@ -1,6 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   CourseBuilderProvider,
   useCourseBuilder,
@@ -10,6 +12,10 @@ import { CourseSetupStep } from "@/components/course-builder/course-setup-step";
 import { CurriculumStep } from "@/components/course-builder/curriculum-step";
 import { LessonEditor } from "@/components/course-builder/lesson-editor";
 import { ReviewStep } from "@/components/course-builder/review-step";
+import type { ApiResult } from "@/lib/api/client";
+import type { CourseSummary } from "@/lib/api/courses";
+import { publishCourse } from "@/lib/api/courses";
+import { apiClient } from "@/lib/api/client";
 
 function NewCourseFlow() {
   const router = useRouter();
@@ -21,14 +27,63 @@ function NewCourseFlow() {
     totalLessons,
     editingLesson,
     setEditingLesson,
+    setCourseId,
+    setModules,
+    courseId,
   } = useCourseBuilder();
+  const [creating, setCreating] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+
+  const handleProceedFromSetup = async () => {
+    setCreating(true);
+    const result = (await apiClient<
+      CourseSummary & {
+        modules?: { _id: string; title: string; lessons: [] }[];
+      }
+    >("/courses", {
+      method: "POST",
+      body: JSON.stringify({
+        title: draft.title,
+        description: draft.description,
+        level: draft.level,
+        price: parseFloat(draft.price) || 0,
+        duration: draft.duration,
+        status: "draft",
+        modules: [{ title: "Module 1", order: 0 }],
+      }),
+    })) as ApiResult<
+      CourseSummary & {
+        modules?: { _id: string; title: string; lessons: [] }[];
+      }
+    >;
+
+    if (result.success) {
+      const id = result.data._id;
+      setCourseId(id);
+      const apiModules = result.data.modules ?? [];
+      if (apiModules.length > 0) {
+        setModules(
+          apiModules.map((m) => ({
+            id: m._id,
+            title: m.title,
+            lessons: [],
+          })),
+        );
+      }
+      setStep(2);
+    } else {
+      toast.error(
+        result.message || "Failed to create course. Please try again.",
+      );
+    }
+    setCreating(false);
+  };
 
   // Lesson editor sub-view of step 2
   if (step === 2 && editingLesson) {
     const mod = draft.modules.find((m) => m.id === editingLesson.moduleId);
     const lesson = mod?.lessons.find((l) => l.id === editingLesson.lessonId);
     if (!mod || !lesson) {
-      // Lesson got removed; bail back to curriculum.
       setEditingLesson(null);
       return null;
     }
@@ -51,8 +106,9 @@ function NewCourseFlow() {
       <CourseBuilderShell
         hidePrevious
         primaryLabel="Proceed"
-        primaryDisabled={!isSetupComplete}
-        onPrimary={() => setStep(2)}
+        primaryDisabled={!isSetupComplete || creating}
+        primaryLoading={creating}
+        onPrimary={handleProceedFromSetup}
       >
         <CourseSetupStep />
       </CourseBuilderShell>
@@ -74,10 +130,28 @@ function NewCourseFlow() {
   }
 
   // Step 3 (review)
+  const handlePublish = async () => {
+    if (!courseId) {
+      router.push("/courses");
+      return;
+    }
+    setPublishing(true);
+    const result = await publishCourse(courseId);
+    if (result.success) {
+      toast.success("Course published!");
+      router.push("/courses");
+    } else {
+      toast.error(result.message || "Failed to publish course");
+      setPublishing(false);
+    }
+  };
+
   return (
     <CourseBuilderShell
       primaryLabel="Publish"
-      onPrimary={() => router.push("/courses")}
+      primaryLoading={publishing}
+      primaryDisabled={publishing}
+      onPrimary={handlePublish}
       onPrevious={() => setStep(2)}
     >
       <ReviewStep />

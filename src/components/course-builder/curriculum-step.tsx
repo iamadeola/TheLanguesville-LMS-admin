@@ -3,18 +3,37 @@
 import { Box, Button, Flex, Heading, Stack, Text } from "@chakra-ui/react";
 import { CheckCircle2, Plus } from "lucide-react";
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { useCourseBuilder } from "./course-builder-context";
 import { ModuleCard } from "./module-card";
+import { addApiModule } from "@/lib/api/courses";
 
 export function CurriculumStep() {
-  const { draft, addModule, totalLessons } = useCourseBuilder();
+  const { draft, courseId, setModules, totalLessons } = useCourseBuilder();
   const [toastVisible, setToastVisible] = useState(false);
+  const [addingModule, setAddingModule] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleLessonAdded = () => {
     setToastVisible(true);
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setToastVisible(false), 3000);
+  };
+
+  const handleAddModule = async () => {
+    if (!courseId) return;
+    setAddingModule(true);
+    const title = `Module ${draft.modules.length + 1}`;
+    const result = await addApiModule(courseId, title);
+    if (result.success) {
+      setModules([
+        ...draft.modules,
+        { id: result.data._id, title: result.data.title, lessons: [] },
+      ]);
+    } else {
+      toast.error(result.message || "Failed to add module");
+    }
+    setAddingModule(false);
   };
 
   return (
@@ -56,7 +75,9 @@ export function CurriculumStep() {
           fontSize="sm"
           fontWeight="medium"
           _hover={{ bg: "#262760" }}
-          onClick={addModule}
+          loading={addingModule}
+          disabled={addingModule}
+          onClick={handleAddModule}
         >
           <Plus size={16} />
           <Box as="span" ml={2}>

@@ -68,6 +68,9 @@ interface CourseBuilderContextValue {
   setDraft: (updater: (prev: CourseDraft) => CourseDraft) => void;
   step: Step;
   setStep: (step: Step) => void;
+  courseId: string | null;
+  setCourseId: (id: string) => void;
+  setModules: (modules: Module[]) => void;
   editingLesson: LessonRef | null;
   setEditingLesson: (ref: LessonRef | null) => void;
 
@@ -81,12 +84,12 @@ interface CourseBuilderContextValue {
   renameModule: (moduleId: string, title: string) => void;
 
   // Lesson actions
-  addLesson: (moduleId: string) => string;
+  addLesson: (moduleId: string, suppliedId?: string) => string;
   removeLesson: (ref: LessonRef) => void;
   renameLesson: (ref: LessonRef, title: string) => void;
 
   // Block actions
-  addBlock: (ref: LessonRef, type: BlockType) => string;
+  addBlock: (ref: LessonRef, type: BlockType, suppliedId?: string) => string;
   updateBlock: (
     ref: LessonRef,
     blockId: string,
@@ -121,9 +124,26 @@ function createId() {
   return Math.random().toString(36).slice(2);
 }
 
-export function CourseBuilderProvider({ children }: { children: ReactNode }) {
-  const [draft, setDraftState] = useState<CourseDraft>(initialDraft);
-  const [step, setStep] = useState<Step>(1);
+interface CourseBuilderProviderProps {
+  children: ReactNode;
+  initialDraft?: CourseDraft;
+  initialCourseId?: string;
+  initialStep?: Step;
+}
+
+export function CourseBuilderProvider({
+  children,
+  initialDraft: seedDraft,
+  initialCourseId,
+  initialStep,
+}: CourseBuilderProviderProps) {
+  const [draft, setDraftState] = useState<CourseDraft>(
+    seedDraft ?? initialDraft,
+  );
+  const [step, setStep] = useState<Step>(initialStep ?? 1);
+  const [courseId, setCourseId] = useState<string | null>(
+    initialCourseId ?? null,
+  );
   const [editingLesson, setEditingLesson] = useState<LessonRef | null>(null);
 
   const value = useMemo<CourseBuilderContextValue>(() => {
@@ -148,6 +168,9 @@ export function CourseBuilderProvider({ children }: { children: ReactNode }) {
       setDraft,
       step,
       setStep,
+      courseId,
+      setCourseId,
+      setModules: (modules) => setDraft((prev) => ({ ...prev, modules })),
       editingLesson,
       setEditingLesson,
       isSetupComplete,
@@ -176,8 +199,8 @@ export function CourseBuilderProvider({ children }: { children: ReactNode }) {
             m.id === moduleId ? { ...m, title } : m,
           ),
         })),
-      addLesson: (moduleId) => {
-        const lessonId = createId();
+      addLesson: (moduleId, suppliedId) => {
+        const lessonId = suppliedId ?? createId();
         setDraft((prev) => ({
           ...prev,
           modules: prev.modules.map((m) =>
@@ -220,8 +243,8 @@ export function CourseBuilderProvider({ children }: { children: ReactNode }) {
               : m,
           ),
         })),
-      addBlock: ({ moduleId, lessonId }, type) => {
-        const blockId = createId();
+      addBlock: ({ moduleId, lessonId }, type, suppliedId) => {
+        const blockId = suppliedId ?? createId();
         const newBlock: LessonBlock =
           type === "text"
             ? { id: blockId, type: "text", html: "" }
@@ -291,7 +314,7 @@ export function CourseBuilderProvider({ children }: { children: ReactNode }) {
           ),
         })),
     };
-  }, [draft, step, editingLesson]);
+  }, [draft, step, courseId, editingLesson]);
 
   return (
     <CourseBuilderContext.Provider value={value}>
