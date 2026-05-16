@@ -20,7 +20,14 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { type Module, useCourseBuilder } from "./course-builder-context";
+import {
+  updateApiModule,
+  deleteApiModule,
+  addApiLesson,
+  deleteApiLesson,
+} from "@/lib/api/courses";
 
 interface ModuleCardProps {
   mod: Module;
@@ -33,6 +40,7 @@ export function ModuleCard({
   onLessonAdded,
 }: ModuleCardProps & { onLessonAdded?: () => void }) {
   const {
+    courseId,
     renameModule,
     removeModule,
     removeLesson,
@@ -43,22 +51,55 @@ export function ModuleCard({
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(mod.title);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const startEditing = () => {
     setDraftTitle(mod.title);
     setEditing(true);
   };
 
-  const commitEditing = () => {
+  const commitEditing = async () => {
     const next = draftTitle.trim() || "New module";
-    renameModule(mod.id, next);
     setEditing(false);
+    renameModule(mod.id, next);
+    if (courseId) {
+      setSaving(true);
+      const result = await updateApiModule(courseId, mod.id, next);
+      if (!result.success) {
+        toast.error(result.message || "Failed to rename module");
+        renameModule(mod.id, mod.title);
+      }
+      setSaving(false);
+    }
   };
 
-  const handleAddLesson = () => {
-    const lessonId = addLesson(mod.id);
-    setEditingLesson({ moduleId: mod.id, lessonId });
-    onLessonAdded?.();
+  const handleDelete = async () => {
+    if (!courseId) {
+      removeModule(mod.id);
+      return;
+    }
+    setDeleting(true);
+    const result = await deleteApiModule(courseId, mod.id);
+    if (result.success) {
+      removeModule(mod.id);
+    } else {
+      toast.error(result.message || "Failed to delete module");
+      setDeleting(false);
+    }
+  };
+
+  const handleAddLesson = async () => {
+    if (!courseId) return;
+    const result = await addApiLesson(courseId, mod.id, "Untitled Lesson");
+    if (result.success) {
+      const lessonId = result.data._id;
+      addLesson(mod.id, lessonId);
+      setEditingLesson({ moduleId: mod.id, lessonId });
+      onLessonAdded?.();
+    } else {
+      toast.error(result.message || "Failed to add lesson");
+    }
   };
 
   return (
@@ -92,9 +133,9 @@ export function ModuleCard({
                   fontWeight="semibold"
                   value={draftTitle}
                   onChange={(e) => setDraftTitle(e.target.value)}
-                  onBlur={commitEditing}
+                  onBlur={() => void commitEditing()}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") commitEditing();
+                    if (e.key === "Enter") void commitEditing();
                     if (e.key === "Escape") {
                       setDraftTitle(mod.title);
                       setEditing(false);
@@ -124,7 +165,11 @@ export function ModuleCard({
               </HStack>
             ) : (
               <HStack gap={2}>
-                <Text fontWeight="semibold" color="gray.900" fontSize="sm">
+                <Text
+                  fontWeight="semibold"
+                  color={saving ? "gray.400" : "gray.900"}
+                  fontSize="sm"
+                >
                   {mod.title}
                 </Text>
                 <IconButton
@@ -132,6 +177,7 @@ export function ModuleCard({
                   variant="ghost"
                   size="xs"
                   color="gray.500"
+                  disabled={saving}
                   onClick={startEditing}
                 >
                   <Pencil size={12} />
@@ -146,7 +192,9 @@ export function ModuleCard({
           variant="ghost"
           size="sm"
           color="#DC2626"
-          onClick={() => removeModule(mod.id)}
+          loading={deleting}
+          disabled={deleting}
+          onClick={handleDelete}
         >
           <Trash2 size={16} />
         </IconButton>
@@ -179,11 +227,7 @@ export function ModuleCard({
                 }
               >
                 <CheckCircle2 size={16} color="#16A34A" />
-                <Text
-                  fontSize="sm"
-                  fontWeight="medium"
-                  color="gray.900"
-                >
+                <Text fontSize="sm" fontWeight="medium" color="gray.900">
                   {String(lessonIndex + 1).padStart(2, "0")} · {lesson.title}
                 </Text>
                 <ChevronRight size={14} color="#9CA3AF" />
@@ -193,9 +237,22 @@ export function ModuleCard({
                 variant="ghost"
                 size="xs"
                 color="#DC2626"
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  removeLesson({ moduleId: mod.id, lessonId: lesson.id });
+                  if (!courseId) {
+                    removeLesson({ moduleId: mod.id, lessonId: lesson.id });
+                    return;
+                  }
+                  const result = await deleteApiLesson(
+                    courseId,
+                    mod.id,
+                    lesson.id,
+                  );
+                  if (result.success) {
+                    removeLesson({ moduleId: mod.id, lessonId: lesson.id });
+                  } else {
+                    toast.error(result.message || "Failed to delete lesson");
+                  }
                 }}
               >
                 <Trash2 size={14} />

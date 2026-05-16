@@ -1,33 +1,260 @@
 "use client";
 
-import { Box, Flex, HStack, SimpleGrid, Stack, Text } from "@chakra-ui/react";
-import { Plus } from "lucide-react";
+import React from "react";
+import {
+  Box,
+  Button,
+  Flex,
+  HStack,
+  Heading,
+  Portal,
+  SimpleGrid,
+  Skeleton,
+  Stack,
+  Text,
+} from "@chakra-ui/react";
+import { AlertTriangle, Trash2, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { SearchInput } from "@/components/dashboard/search-input";
-import { StatCard } from "@/components/dashboard/stat-card";
 import { AppButton } from "@/components/ui/app-button";
+import { useAdmin } from "@/lib/hooks/use-admin";
+import {
+  type CourseSummary,
+  deleteCourse,
+  listCourses,
+} from "@/lib/api/courses";
 
-interface CoursesTab {
-  value: "all" | "published" | "draft";
-  label: string;
-  count?: number;
+type TabValue = "all" | "published" | "draft";
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} minute${mins > 1 ? "s" : ""} ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hour${hrs > 1 ? "s" : ""} ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days} day${days > 1 ? "s" : ""} ago`;
 }
 
-const TABS: CoursesTab[] = [
-  { value: "all", label: "All", count: 2 },
-  { value: "published", label: "Published" },
-  { value: "draft", label: "Draft" },
-];
+const LEVEL_COLORS: Record<string, string> = {
+  A1: "#3B82F6",
+  A2: "#6366F1",
+  B1: "#8B5CF6",
+  B2: "#EC4899",
+  C1: "#F97316",
+  C2: "#EF4444",
+};
+
+function CourseRow({
+  course,
+  onDelete,
+  onClick,
+}: {
+  course: CourseSummary;
+  onDelete: (id: string) => void;
+  onClick: () => void;
+}) {
+  const moduleCount =
+    course.moduleCount ?? (course.modules ? course.modules.length : 0);
+  const totalLessons =
+    course.lessonCount ??
+    (course.modules
+      ? course.modules.reduce((s, m) => s + (m.lessons?.length ?? 0), 0)
+      : 0);
+  const completion = Math.round(course.completionRate ?? 0);
+  const levelColor = LEVEL_COLORS[course.level] ?? "#6366F1";
+
+  return (
+    <Box
+      bg="white"
+      borderWidth="1px"
+      borderColor="gray.200"
+      rounded="xl"
+      p={5}
+      cursor="pointer"
+      transition="box-shadow 0.15s"
+      _hover={{ boxShadow: "sm" }}
+      onClick={onClick}
+    >
+      <Flex justify="space-between" align="flex-start" mb={2}>
+        <HStack gap={2}>
+          <Box
+            fontSize="xs"
+            fontWeight="bold"
+            color={levelColor}
+            bg={`${levelColor}18`}
+            px={2}
+            py={0.5}
+            rounded="md"
+          >
+            {course.level}
+          </Box>
+        </HStack>
+        <Text
+          fontSize="xs"
+          fontWeight="semibold"
+          color={course.status === "published" ? "#16A34A" : "#F59E0B"}
+        >
+          {course.status === "published" ? "Published" : "Draft"}
+        </Text>
+      </Flex>
+
+      <Text fontWeight="semibold" fontSize="md" color="gray.900" mb={1}>
+        {course.title}
+      </Text>
+      <Text fontSize="sm" color="gray.500" mb={3} lineClamp={2}>
+        {course.description}
+      </Text>
+
+      <Flex justify="space-between" align="center" mb={2}>
+        <HStack gap={1} fontSize="xs" color="gray.500" flexWrap="wrap">
+          <Text color="#2E2F6F" fontWeight="medium">
+            {moduleCount} module{moduleCount !== 1 ? "s" : ""}
+          </Text>
+          <Text>•</Text>
+          <Text>
+            {totalLessons} lesson{totalLessons !== 1 ? "s" : ""}
+          </Text>
+          <Text>•</Text>
+          <Text>{course.duration}</Text>
+          <Text>•</Text>
+          <Text>
+            {course.enrolledCount} student
+            {course.enrolledCount !== 1 ? "s" : ""}
+          </Text>
+        </HStack>
+        <Text fontWeight="bold" fontSize="sm" color="gray.900">
+          {course.price === 0 ? "Free" : `$${course.price}`}
+        </Text>
+      </Flex>
+
+      {/* Progress bar */}
+      <Box bg="gray.100" rounded="full" h="6px" mb={3}>
+        <Box
+          bg="#2E2F6F"
+          rounded="full"
+          h="6px"
+          w={`${completion}%`}
+          transition="width 0.4s"
+        />
+      </Box>
+
+      <Flex justify="space-between" align="center">
+        <Text fontSize="xs" color="gray.400">
+          Updated {timeAgo(course.updatedAt)}
+        </Text>
+        <Box
+          as="button"
+          onClick={(e: React.MouseEvent) => {
+            e.stopPropagation();
+            onDelete(course._id);
+          }}
+          color="red.400"
+          cursor="pointer"
+          _hover={{ color: "red.600" }}
+          transition="color 0.15s"
+          aria-label="Delete course"
+        >
+          <Trash2 size={16} />
+        </Box>
+      </Flex>
+    </Box>
+  );
+}
+
+function CourseRowSkeleton() {
+  return (
+    <Box bg="white" borderWidth="1px" borderColor="gray.200" rounded="xl" p={5}>
+      <Flex justify="space-between" mb={3}>
+        <Skeleton height="20px" width="36px" rounded="md" />
+        <Skeleton height="16px" width="60px" rounded="md" />
+      </Flex>
+      <Skeleton height="20px" width="60%" rounded="md" mb={2} />
+      <Skeleton height="14px" width="90%" rounded="md" mb={1} />
+      <Skeleton height="14px" width="75%" rounded="md" mb={4} />
+      <Skeleton height="6px" rounded="full" mb={3} />
+      <Flex justify="space-between">
+        <Skeleton height="12px" width="100px" rounded="md" />
+        <Skeleton height="16px" width="16px" rounded="md" />
+      </Flex>
+    </Box>
+  );
+}
 
 export default function CoursesPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<CoursesTab["value"]>("all");
+  const { admin, loading: adminLoading } = useAdmin();
+  const [activeTab, setActiveTab] = useState<TabValue>("all");
+  const [search, setSearch] = useState("");
+  const [courses, setCourses] = useState<CourseSummary[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(true);
+  const [pendingDelete, setPendingDelete] = useState<CourseSummary | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
+
+  const fetchCourses = useCallback(async () => {
+    setCoursesLoading(true);
+    const params: Record<string, string> = {};
+    if (activeTab !== "all") params.status = activeTab;
+    if (search) params.search = search;
+    const result = await listCourses(params);
+    if (result.success) setCourses(result.data.courses);
+    setCoursesLoading(false);
+  }, [activeTab, search]);
+
+  useEffect(() => {
+    const id = setTimeout(fetchCourses, search ? 300 : 0);
+    return () => clearTimeout(id);
+  }, [fetchCourses, search]);
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    const result = await deleteCourse(pendingDelete._id);
+    if (result.success) {
+      toast.success("Course deleted");
+      setCourses((prev) => prev.filter((c) => c._id !== pendingDelete._id));
+      setPendingDelete(null);
+    } else {
+      toast.error(result.message || "Failed to delete course");
+    }
+    setDeleting(false);
+  };
+
+  const allCount = courses.length;
+  const publishedCount = courses.filter((c) => c.status === "published").length;
+  const draftCount = courses.filter((c) => c.status === "draft").length;
+
+  const TABS = [
+    { value: "all" as TabValue, label: "All", count: allCount },
+    {
+      value: "published" as TabValue,
+      label: "Published",
+      count: publishedCount,
+    },
+    { value: "draft" as TabValue, label: "Draft", count: draftCount },
+  ];
 
   return (
     <Box>
-      <DashboardHeader title="Courses" notificationCount={3} />
+      <DashboardHeader
+        title="Courses"
+        notificationCount={3}
+        loading={adminLoading}
+        user={
+          admin
+            ? {
+                name: `${admin.firstName} ${admin.lastName}`.trim(),
+                role: admin.role === "super_admin" ? "Super Admin" : "Admin",
+              }
+            : undefined
+        }
+      />
 
       <Box px={8} py={6}>
         <Stack gap={6}>
@@ -53,21 +280,19 @@ export default function CoursesPage() {
                       >
                         {tab.label}
                       </Text>
-                      {tab.count !== undefined ? (
-                        <Box
-                          bg={active ? "#E8E9F5" : "gray.100"}
-                          color={active ? "#2E2F6F" : "gray.500"}
-                          fontSize="xs"
-                          fontWeight="semibold"
-                          rounded="full"
-                          px={2}
-                          py={0.5}
-                          minW="20px"
-                          textAlign="center"
-                        >
-                          {tab.count}
-                        </Box>
-                      ) : null}
+                      <Box
+                        bg={active ? "#E8E9F5" : "gray.100"}
+                        color={active ? "#2E2F6F" : "gray.500"}
+                        fontSize="xs"
+                        fontWeight="semibold"
+                        rounded="full"
+                        px={2}
+                        py={0.5}
+                        minW="20px"
+                        textAlign="center"
+                      >
+                        {tab.count}
+                      </Box>
                     </HStack>
                   </Box>
                 );
@@ -77,34 +302,143 @@ export default function CoursesPage() {
 
           {/* Search + New course */}
           <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
-            <SearchInput placeholder="Search a course..." />
-            <Box w="auto">
-              <AppButton
-                w="auto"
-                px={5}
-                onClick={() => router.push("/courses/new")}
-              >
-                <HStack gap={2}>
-                  <Plus size={16} />
-                  <Text>New course</Text>
-                </HStack>
-              </AppButton>
-            </Box>
+            <SearchInput
+              placeholder="Search a course..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <AppButton
+              w="auto"
+              px={5}
+              onClick={() => router.push("/courses/new")}
+            >
+              <HStack gap={2}>
+                <Plus size={16} />
+                <Text>New course</Text>
+              </HStack>
+            </AppButton>
           </Flex>
 
-          {/* Stat cards */}
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} gap={4}>
-            <StatCard label="Total Courses" value={18} changePercent={-7.5} />
-            <StatCard label="Total Students" value="4,860" changePercent={40} />
-            <StatCard
-              label="Lessons Published"
-              value={320}
-              changePercent={-10}
-            />
-            <StatCard label="Avg Completion" value="68%" changePercent={20} />
-          </SimpleGrid>
+          {/* Course grid */}
+          {coursesLoading ? (
+            <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+              {[...Array(4)].map((_, i) => (
+                <CourseRowSkeleton key={i} />
+              ))}
+            </SimpleGrid>
+          ) : courses.length === 0 ? (
+            <Flex
+              direction="column"
+              align="center"
+              justify="center"
+              py={20}
+              gap={3}
+              color="gray.400"
+            >
+              <Text fontSize="lg" fontWeight="medium">
+                No courses found
+              </Text>
+              <Text fontSize="sm">
+                {search
+                  ? "Try a different search term"
+                  : "Create your first course to get started"}
+              </Text>
+            </Flex>
+          ) : (
+            <SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+              {courses.map((course) => (
+                <CourseRow
+                  key={course._id}
+                  course={course}
+                  onDelete={(id) =>
+                    setPendingDelete(courses.find((c) => c._id === id) ?? null)
+                  }
+                  onClick={() => router.push(`/courses/${course._id}`)}
+                />
+              ))}
+            </SimpleGrid>
+          )}
         </Stack>
       </Box>
+
+      {/* Delete confirmation modal */}
+      {pendingDelete && (
+        <Portal>
+          <Box
+            position="fixed"
+            inset={0}
+            bg="blackAlpha.600"
+            zIndex={200}
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            px={4}
+            onClick={() => setPendingDelete(null)}
+          >
+            <Box
+              bg="white"
+              rounded="2xl"
+              p={8}
+              w="full"
+              maxW="440px"
+              boxShadow="2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Stack gap={5} align="center" textAlign="center">
+                <Box
+                  w="56px"
+                  h="56px"
+                  rounded="full"
+                  bg="#FEE2E2"
+                  display="flex"
+                  alignItems="center"
+                  justifyContent="center"
+                >
+                  <AlertTriangle size={26} color="#DC2626" />
+                </Box>
+                <Stack gap={2}>
+                  <Heading as="h3" size="md" color="gray.900">
+                    Delete Course?
+                  </Heading>
+                  <Text fontSize="sm" color="gray.500" lineHeight="1.6">
+                    Are you sure you want to delete{" "}
+                    <strong>{pendingDelete.title}</strong>? This action cannot
+                    be undone and all course content will be permanently
+                    removed.
+                  </Text>
+                </Stack>
+                <Stack gap={3} w="full">
+                  <Button
+                    bg="#DC2626"
+                    color="white"
+                    rounded="full"
+                    h="48px"
+                    fontSize="sm"
+                    fontWeight="semibold"
+                    w="full"
+                    _hover={{ bg: "#B91C1C" }}
+                    loading={deleting}
+                    onClick={handleConfirmDelete}
+                  >
+                    Delete Course
+                  </Button>
+                  <Button
+                    variant="outline"
+                    rounded="full"
+                    h="48px"
+                    fontSize="sm"
+                    fontWeight="medium"
+                    w="full"
+                    onClick={() => setPendingDelete(null)}
+                  >
+                    Cancel
+                  </Button>
+                </Stack>
+              </Stack>
+            </Box>
+          </Box>
+        </Portal>
+      )}
     </Box>
   );
 }

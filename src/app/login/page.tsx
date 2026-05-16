@@ -9,6 +9,8 @@ import { FormField } from "@/components/onboarding/form-field";
 import { OnboardingCard } from "@/components/onboarding/onboarding-card";
 import { PasswordField } from "@/components/onboarding/password-field";
 import { AppButton } from "@/components/ui/app-button";
+import { toast } from "sonner";
+import { login } from "@/lib/api/auth";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -41,11 +43,19 @@ export default function LoginPage() {
       ? passwordError
       : undefined;
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     setSubmitted(true);
     if (emailError || passwordError) return;
     setIsSubmitting(true);
-    setTimeout(() => router.push("/login/verify"), 600);
+
+    const result = await login(email, password);
+
+    if (result.success) {
+      router.push(`/login/verify?email=${encodeURIComponent(email)}`);
+    } else {
+      toast.error(result.message || "Login failed. Please try again.");
+      setIsSubmitting(false);
+    }
   };
 
   return (

@@ -1,11 +1,13 @@
 "use client";
 
 import { Button, Heading, Stack, Text } from "@chakra-ui/react";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { AdminBadge } from "@/components/onboarding/admin-badge";
 import { OnboardingCard } from "@/components/onboarding/onboarding-card";
 import { OtpInput } from "@/components/login/otp-input";
+import { toast } from "sonner";
+import { verifyOtp } from "@/lib/api/auth";
 
 const RESEND_SECONDS = 59;
 const CODE_LENGTH = 6;
@@ -16,12 +18,20 @@ function formatMmSs(seconds: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-export default function VerifyEmailPage() {
+function VerifyEmailForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const email = searchParams.get("email") ?? "";
   const [code, setCode] = useState("");
   const [secondsLeft, setSecondsLeft] = useState(RESEND_SECONDS);
-  const [error, setError] = useState<string | undefined>(undefined);
   const [isVerifying, setIsVerifying] = useState(false);
+
+  useEffect(() => {
+    if (!email) {
+      toast.error("Session expired. Please log in again.");
+      router.replace("/login");
+    }
+  }, [email, router]);
 
   useEffect(() => {
     if (secondsLeft <= 0) return;
@@ -31,23 +41,22 @@ export default function VerifyEmailPage() {
     return () => clearInterval(id);
   }, [secondsLeft]);
 
-  const handleComplete = (fullCode: string) => {
+  const handleComplete = async (fullCode: string) => {
     setIsVerifying(true);
-    setError(undefined);
-    // Simulate verification — accept any 6-digit code in this demo
-    setTimeout(() => {
-      if (fullCode.length === CODE_LENGTH && /^\d+$/.test(fullCode)) {
-        router.push("/dashboard");
-      } else {
-        setIsVerifying(false);
-        setError("Invalid code. Please try again.");
-      }
-    }, 600);
+
+    const result = await verifyOtp(email, fullCode);
+
+    if (result.success) {
+      toast.success("Verified! Redirecting to dashboard…");
+      router.push("/dashboard");
+    } else {
+      setIsVerifying(false);
+      toast.error(result.message || "Invalid code. Please try again.");
+    }
   };
 
   const handleResend = () => {
     setCode("");
-    setError(undefined);
     setSecondsLeft(RESEND_SECONDS);
   };
 
@@ -101,13 +110,15 @@ export default function VerifyEmailPage() {
           onComplete={handleComplete}
           disabled={isVerifying}
         />
-
-        {error ? (
-          <Text fontSize="xs" color="#DC2626" textAlign="center">
-            {error}
-          </Text>
-        ) : null}
       </Stack>
     </OnboardingCard>
+  );
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense>
+      <VerifyEmailForm />
+    </Suspense>
   );
 }

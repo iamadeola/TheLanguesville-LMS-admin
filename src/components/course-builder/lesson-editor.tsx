@@ -18,7 +18,14 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+import {
+  addApiBlock,
+  updateApiBlock,
+  deleteApiBlock,
+  updateApiLesson,
+} from "@/lib/api/courses";
 import { AddBlockBar } from "./blocks/add-block-bar";
 import { BlockWrapper } from "./blocks/block-wrapper";
 import { FileBlock } from "./blocks/file-block";
@@ -39,16 +46,83 @@ interface LessonEditorProps {
 }
 
 export function LessonEditor({ mod, lesson }: LessonEditorProps) {
-  const { setEditingLesson, renameLesson, addBlock, updateBlock, removeBlock } =
-    useCourseBuilder();
+  const {
+    courseId,
+    setEditingLesson,
+    renameLesson,
+    addBlock,
+    updateBlock,
+    removeBlock,
+  } = useCourseBuilder();
   const [editingTitle, setEditingTitle] = useState(false);
   const [draftTitle, setDraftTitle] = useState(lesson.title);
 
-  const lessonRef = { moduleId: mod.id, lessonId: lesson.id };
+  const handleAddBlock = useCallback(
+    async (type: BlockType) => {
+      if (!courseId) {
+        addBlock({ moduleId: mod.id, lessonId: lesson.id }, type);
+        return;
+      }
+      const result = await addApiBlock(courseId, mod.id, lesson.id, { type });
+      if (result.success) {
+        addBlock(
+          { moduleId: mod.id, lessonId: lesson.id },
+          type,
+          result.data._id,
+        );
+      } else {
+        toast.error(result.message || "Failed to add block");
+      }
+    },
+    [courseId, mod.id, lesson.id, addBlock],
+  );
 
-  const handleAddBlock = (type: BlockType) => {
-    addBlock(lessonRef, type);
-  };
+  const handleSaveBlock = useCallback(
+    async (blockId: string) => {
+      if (!courseId) return;
+      const block = lesson.blocks.find((b) => b.id === blockId);
+      if (!block) return;
+      const payload =
+        block.type === "text"
+          ? { content: block.html }
+          : block.type === "video"
+            ? { url: block.url }
+            : {
+                fileName: (block as FileBlockModel).fileName,
+                fileSize: (block as FileBlockModel).fileSize,
+                mimeType: (block as FileBlockModel).mimeType,
+              };
+      const result = await updateApiBlock(
+        courseId,
+        mod.id,
+        lesson.id,
+        blockId,
+        payload,
+      );
+      if (result.success) {
+        toast.success("Block saved");
+      } else {
+        toast.error(result.message || "Failed to save block");
+      }
+    },
+    [courseId, mod.id, lesson.id, lesson.blocks],
+  );
+
+  const handleRemoveBlock = useCallback(
+    async (blockId: string) => {
+      if (!courseId) {
+        removeBlock({ moduleId: mod.id, lessonId: lesson.id }, blockId);
+        return;
+      }
+      const result = await deleteApiBlock(courseId, mod.id, lesson.id, blockId);
+      if (result.success) {
+        removeBlock({ moduleId: mod.id, lessonId: lesson.id }, blockId);
+      } else {
+        toast.error(result.message || "Failed to delete block");
+      }
+    },
+    [courseId, mod.id, lesson.id, removeBlock],
+  );
 
   const goBack = () => setEditingLesson(null);
 
@@ -56,10 +130,20 @@ export function LessonEditor({ mod, lesson }: LessonEditorProps) {
     setDraftTitle(lesson.title);
     setEditingTitle(true);
   };
-  const commit = () => {
+
+  const commit = async () => {
     const next = draftTitle.trim() || "Untitled Lesson";
     renameLesson({ moduleId: mod.id, lessonId: lesson.id }, next);
     setEditingTitle(false);
+    if (courseId) {
+      const result = await updateApiLesson(courseId, mod.id, lesson.id, {
+        title: next,
+      });
+      if (!result.success) {
+        toast.error(result.message || "Failed to rename lesson");
+        renameLesson({ moduleId: mod.id, lessonId: lesson.id }, lesson.title);
+      }
+    }
   };
 
   return (
@@ -104,9 +188,9 @@ export function LessonEditor({ mod, lesson }: LessonEditorProps) {
               maxW="420px"
               value={draftTitle}
               onChange={(e) => setDraftTitle(e.target.value)}
-              onBlur={commit}
+              onBlur={() => void commit()}
               onKeyDown={(e) => {
-                if (e.key === "Enter") commit();
+                if (e.key === "Enter") void commit();
                 if (e.key === "Escape") {
                   setDraftTitle(lesson.title);
                   setEditingTitle(false);
@@ -166,19 +250,19 @@ export function LessonEditor({ mod, lesson }: LessonEditorProps) {
               icon={BookOpen}
               title="Write Content"
               description="Rich content, headings, links, lists"
-              onClick={() => handleAddBlock("text")}
+              onClick={() => void handleAddBlock("text")}
             />
             <ContentTypeCard
               icon={Video}
               title="Add Video"
               description="Embed Youtube, Vimeo or upload"
-              onClick={() => handleAddBlock("video")}
+              onClick={() => void handleAddBlock("video")}
             />
             <ContentTypeCard
               icon={Link2}
               title="Upload File"
               description="PDF, audio, worksheet, slides"
-              onClick={() => handleAddBlock("file")}
+              onClick={() => void handleAddBlock("file")}
             />
           </SimpleGrid>
         </>
@@ -189,32 +273,47 @@ export function LessonEditor({ mod, lesson }: LessonEditorProps) {
               key={block.id}
               type={block.type}
               index={idx}
-              onRemove={() => removeBlock(lessonRef, block.id)}
+              onSave={() => void handleSaveBlock(block.id)}
+              onRemove={() => void handleRemoveBlock(block.id)}
             >
               {block.type === "text" ? (
                 <TextBlock
                   block={block}
                   onChange={(html) =>
-                    updateBlock(lessonRef, block.id, { html })
+                    updateBlock(
+                      { moduleId: mod.id, lessonId: lesson.id },
+                      block.id,
+                      { html },
+                    )
                   }
                 />
               ) : block.type === "video" ? (
                 <VideoBlock
                   block={block}
-                  onChange={(url) => updateBlock(lessonRef, block.id, { url })}
+                  onChange={(url) =>
+                    updateBlock(
+                      { moduleId: mod.id, lessonId: lesson.id },
+                      block.id,
+                      { url },
+                    )
+                  }
                 />
               ) : (
                 <FileBlock
                   block={block}
                   onChange={(patch: Partial<FileBlockModel>) =>
-                    updateBlock(lessonRef, block.id, patch)
+                    updateBlock(
+                      { moduleId: mod.id, lessonId: lesson.id },
+                      block.id,
+                      patch,
+                    )
                   }
                 />
               )}
             </BlockWrapper>
           ))}
 
-          <AddBlockBar onAdd={handleAddBlock} />
+          <AddBlockBar onAdd={(type) => void handleAddBlock(type)} />
         </Stack>
       )}
     </Stack>

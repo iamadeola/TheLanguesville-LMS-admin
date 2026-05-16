@@ -7,6 +7,7 @@ import {
   Heading,
   Link,
   SimpleGrid,
+  Skeleton,
   Stack,
   Text,
 } from "@chakra-ui/react";
@@ -21,6 +22,7 @@ import { SearchInput } from "@/components/dashboard/search-input";
 import { SegmentedTabs } from "@/components/dashboard/segmented-tabs";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StudentsChart } from "@/components/dashboard/students-chart";
+import { useAdmin } from "@/lib/hooks/use-admin";
 
 const RANGE_TABS = [
   { value: "12m", label: "12 months" },
@@ -28,7 +30,6 @@ const RANGE_TABS = [
   { value: "7d", label: "7 days" },
 ];
 
-// Demo time series for the chart
 const CHART_DATA = Array.from({ length: 30 }, (_, i) => {
   const day = i + 1;
   const base = 800 + i * 14;
@@ -36,26 +37,65 @@ const CHART_DATA = Array.from({ length: 30 }, (_, i) => {
   return { day, students: Math.round(base + wave) };
 });
 
-const DATE_LINE = "Thursday, 23 April 2026 — 3 active courses";
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+function formatDateLine() {
+  const now = new Date();
+  return now.toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
 
 export default function DashboardPage() {
   const router = useRouter();
   const [range, setRange] = useState("12m");
+  const { admin, loading } = useAdmin();
+  const firstName = admin?.firstName ?? "";
 
   return (
     <Box>
-      <DashboardHeader title="Dashboard" notificationCount={3} />
+      <DashboardHeader
+        title="Dashboard"
+        notificationCount={3}
+        loading={loading}
+        user={
+          admin
+            ? {
+                name: `${admin.firstName} ${admin.lastName}`.trim(),
+                role: admin.role === "super_admin" ? "Super Admin" : "Admin",
+              }
+            : undefined
+        }
+      />
 
       <Box px={8} py={6}>
         <Stack gap={6}>
           {/* Greeting */}
           <Stack gap={1}>
-            <Heading as="h2" size="xl" color="gray.900">
-              Good morning, John.
-            </Heading>
-            <Text fontSize="sm" color="gray.500">
-              {DATE_LINE}
-            </Text>
+            {loading ? (
+              <>
+                <Skeleton height="36px" width="320px" rounded="md" />
+                <Skeleton height="18px" width="240px" rounded="md" mt={1} />
+              </>
+            ) : (
+              <>
+                <Heading as="h2" size="xl" color="gray.900">
+                  {getGreeting()}
+                  {firstName ? `, ${firstName}` : ""}.
+                </Heading>
+                <Text fontSize="sm" color="gray.500">
+                  {formatDateLine()}
+                </Text>
+              </>
+            )}
           </Stack>
 
           {/* Range tabs + search */}
@@ -70,14 +110,36 @@ export default function DashboardPage() {
 
           {/* Stat cards */}
           <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} gap={4}>
-            <StatCard label="Total Courses" value={12} changePercent={-7.5} />
-            <StatCard label="Total Students" value="1,240" changePercent={40} />
-            <StatCard
-              label="Lessons Published"
-              value={48}
-              changePercent={-10}
-            />
-            <StatCard label="Avg Completion" value="72%" changePercent={20} />
+            {loading ? (
+              <>
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} height="96px" rounded="lg" />
+                ))}
+              </>
+            ) : (
+              <>
+                <StatCard
+                  label="Total Courses"
+                  value={12}
+                  changePercent={-7.5}
+                />
+                <StatCard
+                  label="Total Students"
+                  value="1,240"
+                  changePercent={40}
+                />
+                <StatCard
+                  label="Lessons Published"
+                  value={48}
+                  changePercent={-10}
+                />
+                <StatCard
+                  label="Avg Completion"
+                  value="72%"
+                  changePercent={20}
+                />
+              </>
+            )}
           </SimpleGrid>
 
           {/* Active Courses + Quick Actions */}
