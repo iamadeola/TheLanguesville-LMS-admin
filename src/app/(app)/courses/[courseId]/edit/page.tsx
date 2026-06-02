@@ -229,6 +229,10 @@ function EditCoursePageInner() {
   );
 }
 
+export function generateStaticParams() {
+  return [];
+}
+
 export default function EditCoursePage() {
   return (
     <Suspense>

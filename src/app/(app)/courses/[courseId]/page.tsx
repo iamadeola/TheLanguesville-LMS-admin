@@ -184,6 +184,10 @@ function CohortProgressSection({ completionRate }: { completionRate: number }) {
   );
 }
 
+export function generateStaticParams() {
+  return [];
+}
+
 export default function CourseDetailPage() {
   const { courseId } = useParams<{ courseId: string }>();
   const router = useRouter();

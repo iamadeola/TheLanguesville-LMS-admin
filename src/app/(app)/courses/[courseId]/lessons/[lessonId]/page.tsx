@@ -189,6 +189,10 @@ function TableOfContents({ blocks }: { blocks: ApiContentBlock[] }) {
   );
 }
 
+export function generateStaticParams() {
+  return [];
+}
+
 export default function LessonDetailPage() {
   const { courseId, lessonId } = useParams<{
     courseId: string;
