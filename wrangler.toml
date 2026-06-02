@@ -1,0 +1,6 @@
+name = "thelanguesville-lms-admin"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "78167141c2e2cfd41eafe448cebf8aea"
+
+[env.production]
