@@ -1,7 +1,6 @@
 "use client";
 
 import { Box, Flex, Skeleton, Stack, Text } from "@chakra-ui/react";
-import { Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -228,9 +227,5 @@ function EditCoursePageInner() {
 }
 
 export default function EditCourseClient() {
-  return (
-    <Suspense>
-      <EditCoursePageInner />
-    </Suspense>
-  );
+  return <EditCoursePageInner />;
 }

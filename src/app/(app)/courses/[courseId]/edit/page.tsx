@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import EditCourseClient from "./edit-course-client";
 
 export function generateStaticParams() {
@@ -5,5 +6,9 @@ export function generateStaticParams() {
 }
 
 export default function EditCoursePage() {
-  return <EditCourseClient />;
+  return (
+    <Suspense>
+      <EditCourseClient />
+    </Suspense>
+  );
 }
