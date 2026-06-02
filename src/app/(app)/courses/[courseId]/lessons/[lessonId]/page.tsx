@@ -1,7 +1,7 @@
 import LessonDetailClient from "./lesson-detail-client";
 
 export function generateStaticParams() {
-  return [];
+  return [{ courseId: "_", lessonId: "_" }];
 }
 
 export default function LessonDetailPage() {
