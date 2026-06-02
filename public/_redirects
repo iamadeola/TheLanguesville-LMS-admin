@@ -1,3 +1,5 @@
+/courses/:courseId/lessons/:lessonId/* /courses/index.html 200
 /courses/:courseId/lessons/:lessonId /courses/index.html 200
 /courses/:courseId/edit /courses/index.html 200
+/courses/:courseId/* /courses/index.html 200
 /courses/:courseId /courses/index.html 200

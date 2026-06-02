@@ -1,7 +1,7 @@
 import EditCourseClient from "./edit-course-client";
 
 export function generateStaticParams() {
-  return [];
+  return [{ courseId: "_" }];
 }
 
 export default function EditCoursePage() {
