@@ -1,7 +1,7 @@
 "use client";
 
 import { Box, Flex, Skeleton, Stack, Text } from "@chakra-ui/react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { EditCourseShell } from "@/components/course-builder/edit-course-shell";
@@ -163,11 +163,16 @@ function EditFlow({ course, openModuleId, openLessonId }: EditFlowProps) {
 function EditCoursePageInner() {
   const { courseId } = useParams<{ courseId: string }>();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const openModuleId = searchParams.get("moduleId") ?? undefined;
-  const openLessonId = searchParams.get("lessonId") ?? undefined;
+  const [openModuleId, setOpenModuleId] = useState<string | undefined>(undefined);
+  const [openLessonId, setOpenLessonId] = useState<string | undefined>(undefined);
   const [course, setCourse] = useState<ApiCourse | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setOpenModuleId(params.get("moduleId") ?? undefined);
+    setOpenLessonId(params.get("lessonId") ?? undefined);
+  }, []);
 
   useEffect(() => {
     async function load() {
