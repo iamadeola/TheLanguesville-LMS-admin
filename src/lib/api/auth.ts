@@ -1,45 +1,57 @@
 import { apiClient, type ApiResult } from "./client";
+import { clearSession, setToken } from "@/lib/auth/session";
 
-export interface LoginData {
-  message: string;
-  adminId: string;
-  requiresOtp: true;
-}
+export type AdminRole = "superadmin" | "admin";
 
 export interface AdminProfile {
   id: string;
   email: string;
   firstName: string;
   lastName: string;
-  role: "super_admin" | "admin";
-  isActive: boolean;
+  role: AdminRole;
 }
 
+/** Step A of login only confirms an OTP was emailed — no token yet. */
+export interface LoginData {
+  message: string;
+}
+
+/** verify-otp returns the JWT (24h) and a confirmation message. */
 export interface VerifyOtpData {
   token: string;
-  admin: AdminProfile;
+  message: string;
 }
 
-function setCookie(name: string, value: string, maxAgeSecs?: number) {
-  let cookie = `${name}=${encodeURIComponent(value)}; path=/; samesite=lax`;
-  if (maxAgeSecs !== undefined) {
-    cookie += `; max-age=${maxAgeSecs}`;
-  }
-  document.cookie = cookie;
+export interface AcceptInviteData {
+  adminId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  message: string;
 }
 
+export interface InviteData {
+  inviteId: string;
+  email: string;
+  message: string;
+}
+
+export function isSuperAdmin(profile: AdminProfile | null | undefined): boolean {
+  return profile?.role === "superadmin";
+}
+
+/** Step A: email + password → emails a 6-digit OTP. */
 export async function login(
   email: string,
   password: string,
 ): Promise<ApiResult<LoginData>> {
-  const result = await apiClient<LoginData>("/admin/login", {
+  return apiClient<LoginData>("/admin/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
-
-  return result;
 }
 
+/** Step B: email + 6-digit OTP → JWT. Stores the token on success. */
 export async function verifyOtp(
   email: string,
   otp: string,
@@ -50,8 +62,7 @@ export async function verifyOtp(
   });
 
   if (result.success) {
-    setCookie("admin_token", result.data.token);
-    setCookie("admin_profile", JSON.stringify(result.data.admin));
+    setToken(result.data.token);
   }
 
   return result;
@@ -61,7 +72,33 @@ export async function getMe(): Promise<ApiResult<AdminProfile>> {
   return apiClient<AdminProfile>("/admin/me", { method: "GET" });
 }
 
-export function clearAuthCookies() {
-  setCookie("admin_token", "", 0);
-  setCookie("admin_profile", "", 0);
+export interface AcceptInvitePayload {
+  token: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+}
+
+/** Public: complete a single-use email invite. Does NOT log the user in. */
+export async function acceptInvite(
+  payload: AcceptInvitePayload,
+): Promise<ApiResult<AcceptInviteData>> {
+  return apiClient<AcceptInviteData>("/admin/accept-invite", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Superadmin-only: email a new admin an invite link. No token is returned. */
+export async function inviteAdmin(
+  email: string,
+): Promise<ApiResult<InviteData>> {
+  return apiClient<InviteData>("/admin/invite", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export function logout() {
+  clearSession();
 }

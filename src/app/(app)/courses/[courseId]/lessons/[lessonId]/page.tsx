@@ -250,7 +250,7 @@ export default function LessonDetailPage() {
           admin
             ? {
                 name: `${admin.firstName} ${admin.lastName}`.trim(),
-                role: admin.role === "super_admin" ? "Super Admin" : "Admin",
+                role: admin.role === "superadmin" ? "Super Admin" : "Admin",
               }
             : undefined
         }
