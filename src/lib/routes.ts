@@ -1,0 +1,28 @@
+/**
+ * Centralized course route URLs.
+ *
+ * The app is deployed as a static export (`output: "export"`), which cannot
+ * serve dynamic path segments for runtime-only ids. So course/lesson ids travel
+ * in the query string and every page below is a real static route.
+ */
+
+function qs(params: Record<string, string | undefined>): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) search.set(key, value);
+  }
+  const str = search.toString();
+  return str ? `?${str}` : "";
+}
+
+export const coursePaths = {
+  list: "/courses",
+  new: "/courses/new",
+  details: (courseId: string) => `/courses/details${qs({ courseId })}`,
+  edit: (
+    courseId: string,
+    opts?: { moduleId?: string; lessonId?: string },
+  ) => `/courses/edit${qs({ courseId, ...opts })}`,
+  lesson: (courseId: string, lessonId: string) =>
+    `/courses/lessons${qs({ courseId, lessonId })}`,
+};

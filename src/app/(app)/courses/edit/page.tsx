@@ -2,7 +2,7 @@
 
 import { Box, Flex, Skeleton, Stack, Text } from "@chakra-ui/react";
 import { Suspense } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { EditCourseShell } from "@/components/course-builder/edit-course-shell";
@@ -14,6 +14,7 @@ import {
 import { CourseSetupStep } from "@/components/course-builder/course-setup-step";
 import { CurriculumStep } from "@/components/course-builder/curriculum-step";
 import { LessonEditor } from "@/components/course-builder/lesson-editor";
+import { coursePaths } from "@/lib/routes";
 import { type ApiCourse, getCourse, updateCourse } from "@/lib/api/courses";
 
 function mapCourseToDraft(course: ApiCourse): CourseDraft {
@@ -49,13 +50,18 @@ function mapCourseToDraft(course: ApiCourse): CourseDraft {
 
 interface EditFlowProps {
   course: ApiCourse;
+  courseId: string;
   openModuleId?: string;
   openLessonId?: string;
 }
 
-function EditFlow({ course, openModuleId, openLessonId }: EditFlowProps) {
+function EditFlow({
+  course,
+  courseId,
+  openModuleId,
+  openLessonId,
+}: EditFlowProps) {
   const router = useRouter();
-  const { courseId } = useParams<{ courseId: string }>();
   const {
     step,
     setStep,
@@ -103,7 +109,7 @@ function EditFlow({ course, openModuleId, openLessonId }: EditFlowProps) {
     });
     if (result.success) {
       toast.success("Course updated!");
-      router.push(`/courses/${courseId}`);
+      router.push(coursePaths.details(courseId));
     } else {
       toast.error(result.message || "Failed to save");
       setSaving(false);
@@ -164,22 +170,26 @@ function EditFlow({ course, openModuleId, openLessonId }: EditFlowProps) {
 }
 
 function EditCoursePageInner() {
-  const { courseId } = useParams<{ courseId: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const courseId = searchParams.get("courseId") ?? "";
   const openModuleId = searchParams.get("moduleId") ?? undefined;
   const openLessonId = searchParams.get("lessonId") ?? undefined;
   const [course, setCourse] = useState<ApiCourse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!courseId) {
+      router.replace(coursePaths.list);
+      return;
+    }
     async function load() {
       const result = await getCourse(courseId);
       if (result.success) {
         setCourse(result.data);
       } else {
         toast.error(result.message || "Failed to load course");
-        router.push(`/courses/${courseId}`);
+        router.push(coursePaths.details(courseId));
       }
       setLoading(false);
     }
@@ -222,6 +232,7 @@ function EditCoursePageInner() {
     >
       <EditFlow
         course={course}
+        courseId={courseId}
         openModuleId={openModuleId}
         openLessonId={openLessonId}
       />

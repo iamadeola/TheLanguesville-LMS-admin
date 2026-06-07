@@ -20,11 +20,12 @@ import {
   ChevronRight,
   ArrowLeft,
 } from "lucide-react";
-import { useRouter, useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { useAdmin } from "@/lib/hooks/use-admin";
+import { coursePaths } from "@/lib/routes";
 import {
   type ApiCourse,
   type ApiModuleDetail,
@@ -115,9 +116,7 @@ function ModuleRow({
             borderColor="gray.100"
             cursor="pointer"
             _hover={{ bg: "gray.50" }}
-            onClick={() =>
-              router.push(`/courses/${courseId}/lessons/${lesson._id}`)
-            }
+            onClick={() => router.push(coursePaths.lesson(courseId, lesson._id))}
           >
             <HStack gap={3}>
               <Text
@@ -184,8 +183,9 @@ function CohortProgressSection({ completionRate }: { completionRate: number }) {
   );
 }
 
-export default function CourseDetailPage() {
-  const { courseId } = useParams<{ courseId: string }>();
+function CourseDetailContent() {
+  const searchParams = useSearchParams();
+  const courseId = searchParams.get("courseId") ?? "";
   const router = useRouter();
   const { admin, loading: adminLoading } = useAdmin();
   const [course, setCourse] = useState<ApiCourse | null>(null);
@@ -195,6 +195,10 @@ export default function CourseDetailPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
+    if (!courseId) {
+      router.replace(coursePaths.list);
+      return;
+    }
     async function load() {
       setLoading(true);
       const result = await getCourse(courseId);
@@ -202,7 +206,7 @@ export default function CourseDetailPage() {
         setCourse(result.data);
       } else {
         toast.error(result.message || "Failed to load course");
-        router.push("/courses");
+        router.push(coursePaths.list);
       }
       setLoading(false);
     }
@@ -215,7 +219,7 @@ export default function CourseDetailPage() {
     const result = await deleteCourse(courseId);
     if (result.success) {
       toast.success("Course deleted");
-      router.push("/courses");
+      router.push(coursePaths.list);
     } else {
       toast.error(result.message || "Failed to delete course");
       setActionLoading(false);
@@ -274,7 +278,7 @@ export default function CourseDetailPage() {
             aria-label="Back"
             variant="ghost"
             size="sm"
-            onClick={() => router.push("/courses")}
+            onClick={() => router.push(coursePaths.list)}
           >
             <ArrowLeft size={18} />
           </IconButton>
@@ -301,7 +305,7 @@ export default function CourseDetailPage() {
                 h="36px"
                 px={4}
                 rounded="md"
-                onClick={() => router.push(`/courses/${courseId}/edit`)}
+                onClick={() => router.push(coursePaths.edit(courseId))}
               >
                 Edit
               </Button>
@@ -336,7 +340,7 @@ export default function CourseDetailPage() {
               color="#2E2F6F"
               fontWeight="medium"
               cursor="pointer"
-              onClick={() => router.push("/courses")}
+              onClick={() => router.push(coursePaths.list)}
               _hover={{ textDecoration: "underline" }}
             >
               Courses
@@ -618,5 +622,13 @@ export default function CourseDetailPage() {
         </Portal>
       )}
     </Box>
+  );
+}
+
+export default function CourseDetailPage() {
+  return (
+    <Suspense>
+      <CourseDetailContent />
+    </Suspense>
   );
 }

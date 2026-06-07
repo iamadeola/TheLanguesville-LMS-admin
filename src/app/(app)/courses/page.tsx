@@ -21,6 +21,7 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { SearchInput } from "@/components/dashboard/search-input";
 import { AppButton } from "@/components/ui/app-button";
 import { useAdmin } from "@/lib/hooks/use-admin";
+import { coursePaths } from "@/lib/routes";
 import {
   type CourseSummary,
   deleteCourse,
@@ -353,7 +354,7 @@ export default function CoursesPage() {
                   onDelete={(id) =>
                     setPendingDelete(courses.find((c) => c._id === id) ?? null)
                   }
-                  onClick={() => router.push(`/courses/${course._id}`)}
+                  onClick={() => router.push(coursePaths.details(course._id))}
                 />
               ))}
             </SimpleGrid>
