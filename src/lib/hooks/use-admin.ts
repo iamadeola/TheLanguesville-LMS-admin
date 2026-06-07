@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { type AdminProfile, getMe } from "@/lib/api/auth";
-
-const CACHE_KEY = "admin_profile_cache";
+import { PROFILE_CACHE_KEY as CACHE_KEY } from "@/lib/auth/session";
 
 function readCache(): AdminProfile | null {
   try {

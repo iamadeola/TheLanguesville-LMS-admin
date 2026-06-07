@@ -11,10 +11,11 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { ArrowUp, BookOpen, FileText, Plus } from "lucide-react";
+import { ArrowUp, BookOpen, FileText, Plus, UserPlus } from "lucide-react";
 import NextLink from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { InviteAdminDialog } from "@/components/admin/invite-admin-dialog";
 import { CourseCard } from "@/components/dashboard/course-card";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { QuickActionCard } from "@/components/dashboard/quick-action-card";
@@ -22,6 +23,7 @@ import { SearchInput } from "@/components/dashboard/search-input";
 import { SegmentedTabs } from "@/components/dashboard/segmented-tabs";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StudentsChart } from "@/components/dashboard/students-chart";
+import { isSuperAdmin } from "@/lib/api/auth";
 import { useAdmin } from "@/lib/hooks/use-admin";
 
 const RANGE_TABS = [
@@ -57,8 +59,10 @@ function formatDateLine() {
 export default function DashboardPage() {
   const router = useRouter();
   const [range, setRange] = useState("12m");
+  const [inviteOpen, setInviteOpen] = useState(false);
   const { admin, loading } = useAdmin();
   const firstName = admin?.firstName ?? "";
+  const canInvite = isSuperAdmin(admin);
 
   return (
     <Box>
@@ -70,7 +74,7 @@ export default function DashboardPage() {
           admin
             ? {
                 name: `${admin.firstName} ${admin.lastName}`.trim(),
-                role: admin.role === "super_admin" ? "Super Admin" : "Admin",
+                role: admin.role === "superadmin" ? "Super Admin" : "Admin",
               }
             : undefined
         }
@@ -217,6 +221,14 @@ export default function DashboardPage() {
                   iconColor="#F97461"
                   iconBg="#FFE4DE"
                 />
+                {canInvite ? (
+                  <QuickActionCard
+                    icon={UserPlus}
+                    title="Invite Admin"
+                    description="Email a new admin invite"
+                    onClick={() => setInviteOpen(true)}
+                  />
+                ) : null}
               </Flex>
             </Box>
           </SimpleGrid>
@@ -254,6 +266,10 @@ export default function DashboardPage() {
           </Box>
         </Stack>
       </Box>
+
+      {canInvite ? (
+        <InviteAdminDialog open={inviteOpen} onOpenChange={setInviteOpen} />
+      ) : null}
     </Box>
   );
 }

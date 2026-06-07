@@ -13,7 +13,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import NextLink from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { logout } from "@/lib/api/auth";
 
 interface NavItem {
   label: string;
@@ -34,10 +35,19 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Students", href: "/students", icon: GraduationCap },
 ];
 
-const FOOTER_ITEMS: NavItem[] = [
-  { label: "Settings", href: "/settings", icon: Settings },
-  { label: "Logout", href: "/login", icon: LogOut },
-];
+const SETTINGS_ITEM: NavItem = {
+  label: "Settings",
+  href: "/settings",
+  icon: Settings,
+};
+
+const sharedItemStyles = {
+  gap: 3,
+  px: 3,
+  py: 2.5,
+  rounded: "md",
+  fontSize: "sm",
+} as const;
 
 interface NavLinkProps {
   item: NavItem;
@@ -49,13 +59,9 @@ function NavLink({ item, active }: NavLinkProps) {
   return (
     <NextLink href={item.href} style={{ textDecoration: "none" }}>
       <HStack
-        gap={3}
-        px={3}
-        py={2.5}
-        rounded="md"
+        {...sharedItemStyles}
         bg={active ? "#F97461" : "transparent"}
         color={active ? "white" : "whiteAlpha.800"}
-        fontSize="sm"
         fontWeight={active ? "semibold" : "medium"}
         _hover={{ bg: active ? "#F97461" : "whiteAlpha.200" }}
         transition="background 0.15s"
@@ -69,6 +75,12 @@ function NavLink({ item, active }: NavLinkProps) {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = () => {
+    logout();
+    router.replace("/login");
+  };
 
   const isActive = (href: string) =>
     href === "/dashboard"
@@ -115,9 +127,23 @@ export function Sidebar() {
 
       {/* Footer nav */}
       <Stack gap={1} pt={4} borderTopWidth="1px" borderColor="whiteAlpha.200">
-        {FOOTER_ITEMS.map((item) => (
-          <NavLink key={item.href} item={item} active={isActive(item.href)} />
-        ))}
+        <NavLink item={SETTINGS_ITEM} active={isActive(SETTINGS_ITEM.href)} />
+        <HStack
+          as="button"
+          onClick={handleLogout}
+          {...sharedItemStyles}
+          w="full"
+          textAlign="left"
+          bg="transparent"
+          color="whiteAlpha.800"
+          fontWeight="medium"
+          _hover={{ bg: "whiteAlpha.200" }}
+          transition="background 0.15s"
+          cursor="pointer"
+        >
+          <LogOut size={18} />
+          <Text>Logout</Text>
+        </HStack>
       </Stack>
     </Flex>
   );
