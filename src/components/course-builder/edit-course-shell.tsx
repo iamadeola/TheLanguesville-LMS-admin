@@ -11,6 +11,7 @@ import {
 import { CheckCircle2, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
+import { coursePaths } from "@/lib/routes";
 import { StepRail } from "./step-rail";
 
 interface EditCourseShellProps {
@@ -63,7 +64,7 @@ export function EditCourseShell({
             color="#2E2F6F"
             fontWeight="medium"
             cursor="pointer"
-            onClick={() => router.push(`/courses/${courseId}`)}
+            onClick={() => router.push(coursePaths.details(courseId))}
             _hover={{ textDecoration: "underline" }}
           >
             {courseTitle}
@@ -96,7 +97,7 @@ export function EditCourseShell({
             px={5}
             fontWeight="medium"
             fontSize="sm"
-            onClick={() => router.push(`/courses/${courseId}`)}
+            onClick={() => router.push(coursePaths.details(courseId))}
           >
             Cancel
           </Button>

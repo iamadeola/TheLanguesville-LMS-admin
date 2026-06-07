@@ -13,11 +13,12 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { AlertTriangle, ArrowLeft, ChevronRight } from "lucide-react";
-import { useRouter, useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { useAdmin } from "@/lib/hooks/use-admin";
+import { coursePaths } from "@/lib/routes";
 import {
   type ApiCourse,
   type ApiLessonDetail,
@@ -189,11 +190,10 @@ function TableOfContents({ blocks }: { blocks: ApiContentBlock[] }) {
   );
 }
 
-export default function LessonDetailPage() {
-  const { courseId, lessonId } = useParams<{
-    courseId: string;
-    lessonId: string;
-  }>();
+function LessonDetailContent() {
+  const searchParams = useSearchParams();
+  const courseId = searchParams.get("courseId") ?? "";
+  const lessonId = searchParams.get("lessonId") ?? "";
   const router = useRouter();
   const { admin, loading: adminLoading } = useAdmin();
   const [course, setCourse] = useState<ApiCourse | null>(null);
@@ -204,6 +204,10 @@ export default function LessonDetailPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
+    if (!courseId || !lessonId) {
+      router.replace(coursePaths.list);
+      return;
+    }
     async function load() {
       setLoading(true);
       const result = await getCourse(courseId);
@@ -219,7 +223,7 @@ export default function LessonDetailPage() {
         }
       } else {
         toast.error(result.message || "Failed to load course");
-        router.push("/courses");
+        router.push(coursePaths.list);
       }
       setLoading(false);
     }
@@ -233,7 +237,7 @@ export default function LessonDetailPage() {
     const result = await deleteApiLesson(courseId, mod._id, lessonId);
     if (result.success) {
       toast.success("Lesson deleted");
-      router.push(`/courses/${courseId}`);
+      router.push(coursePaths.details(courseId));
     } else {
       toast.error(result.message || "Failed to delete lesson");
       setActionLoading(false);
@@ -263,7 +267,7 @@ export default function LessonDetailPage() {
             aria-label="Back"
             variant="ghost"
             size="sm"
-            onClick={() => router.push(`/courses/${courseId}`)}
+            onClick={() => router.push(coursePaths.details(courseId))}
           >
             <ArrowLeft size={18} />
           </IconButton>
@@ -292,7 +296,10 @@ export default function LessonDetailPage() {
                 rounded="md"
                 onClick={() =>
                   router.push(
-                    `/courses/${courseId}/edit?moduleId=${mod?._id ?? ""}&lessonId=${lessonId}`,
+                    coursePaths.edit(courseId, {
+                      moduleId: mod?._id,
+                      lessonId,
+                    }),
                   )
                 }
               >
@@ -308,7 +315,7 @@ export default function LessonDetailPage() {
                 rounded="md"
                 _hover={{ bg: "#262760" }}
                 loading={actionLoading}
-                onClick={() => router.push(`/courses/${courseId}`)}
+                onClick={() => router.push(coursePaths.details(courseId))}
               >
                 Archive
               </Button>
@@ -325,7 +332,7 @@ export default function LessonDetailPage() {
               color="#2E2F6F"
               fontWeight="medium"
               cursor="pointer"
-              onClick={() => router.push(`/courses/${courseId}`)}
+              onClick={() => router.push(coursePaths.details(courseId))}
               _hover={{ textDecoration: "underline" }}
             >
               {course?.title}
@@ -480,5 +487,13 @@ export default function LessonDetailPage() {
         </Portal>
       )}
     </Box>
+  );
+}
+
+export default function LessonDetailPage() {
+  return (
+    <Suspense>
+      <LessonDetailContent />
+    </Suspense>
   );
 }
