@@ -26,3 +26,25 @@ export const coursePaths = {
   lesson: (courseId: string, lessonId: string) =>
     `/courses/lessons${qs({ courseId, lessonId })}`,
 };
+
+export const assignmentPaths = {
+  list: "/assignment",
+  new: "/assignment/new",
+  details: (assignmentId: string) =>
+    `/assignment/details${qs({ assignmentId })}`,
+  grade: (assignmentId: string, submissionId: string) =>
+    `/assignment/grade${qs({ assignmentId, submissionId })}`,
+};
+
+export const settingsPaths = {
+  index: "/settings",
+};
+
+export const analyticsPaths = {
+  index: "/analytics",
+};
+
+export const studentPaths = {
+  list: "/students",
+  details: (studentId: string) => `/students/details${qs({ studentId })}`,
+};

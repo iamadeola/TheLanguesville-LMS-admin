@@ -4,7 +4,6 @@ import { Box, Flex, HStack, Stack, Text } from "@chakra-ui/react";
 import {
   BarChart3,
   BookOpen,
-  ClipboardList,
   GraduationCap,
   LayoutGrid,
   LogOut,
@@ -25,11 +24,6 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutGrid },
   { label: "Courses", href: "/courses", icon: BookOpen },
-  {
-    label: "Curriculum Builder",
-    href: "/curriculum-builder",
-    icon: ClipboardList,
-  },
   { label: "Assignment", href: "/assignment", icon: Star },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
   { label: "Students", href: "/students", icon: GraduationCap },
