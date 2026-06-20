@@ -4,6 +4,8 @@ import { Box, Button, Flex, Input, Stack, Text } from "@chakra-ui/react";
 import { Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api/client";
+import { changePassword } from "@/lib/api/settings";
 
 function PasswordInput({
   value,
@@ -50,15 +52,28 @@ export function SecurityTab() {
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const valid =
     oldPw.length > 0 && newPw.length >= 8 && newPw === confirmPw;
 
-  const handleSave = () => {
-    setOldPw("");
-    setNewPw("");
-    setConfirmPw("");
-    toast.success("Password updated");
+  const handleSave = async () => {
+    if (!valid || saving) return;
+    setSaving(true);
+    const result = await changePassword({
+      oldPassword: oldPw,
+      newPassword: newPw,
+      confirmPassword: confirmPw,
+    });
+    if (result.success) {
+      setOldPw("");
+      setNewPw("");
+      setConfirmPw("");
+      toast.success(result.data.message || "Password changed successfully");
+    } else {
+      toast.error(getApiErrorMessage(result, "Couldn't change password"));
+    }
+    setSaving(false);
   };
 
   return (
@@ -105,7 +120,8 @@ export function SecurityTab() {
           color={valid ? "white" : "#9CA3AF"}
           _hover={valid ? { bg: "#262760" } : { bg: "#E5E7EB" }}
           cursor={valid ? "pointer" : "not-allowed"}
-          disabled={!valid}
+          disabled={!valid || saving}
+          loading={saving}
           onClick={handleSave}
         >
           Save changes

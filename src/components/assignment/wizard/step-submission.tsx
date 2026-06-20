@@ -2,7 +2,7 @@
 
 import { Grid, HStack, Stack, Text } from "@chakra-ui/react";
 import { Link2, Type, Upload } from "lucide-react";
-import type { SubmissionType } from "@/lib/mock/assignments";
+import type { SubmissionType } from "@/lib/api/assignments";
 import { SelectableCard, Toggle } from "@/components/assignment/shared";
 import { useWizard } from "./wizard-context";
 import { Card, FieldLabel, StepHeading, TextField } from "./wizard-bits";

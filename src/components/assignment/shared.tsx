@@ -3,10 +3,24 @@
 import { Box, Flex, HStack, Stack, Text } from "@chakra-ui/react";
 import { Bell, UserCircle2, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
-import type { AssignmentStatus, SubmissionStatus } from "@/lib/mock/assignments";
+import { useAdmin } from "@/lib/hooks/use-admin";
+
+/** Any badge state the assignment screens can render. */
+type BadgeStatus =
+  | "active"
+  | "overdue"
+  | "draft"
+  | "archived"
+  | "published"
+  | "submitted"
+  | "graded"
+  | "pending";
 
 /** Top bar with just the notification bell + user chip (no page title). */
 export function PageTopBar({ notificationCount = 1 }: { notificationCount?: number }) {
+  const { admin } = useAdmin();
+  const name = admin ? `${admin.firstName} ${admin.lastName}`.trim() : "—";
+  const role = admin?.role === "superadmin" ? "Super Admin" : "Admin";
   return (
     <Flex
       h="72px"
@@ -41,10 +55,10 @@ export function PageTopBar({ notificationCount = 1 }: { notificationCount?: numb
           <UserCircle2 size={32} color="#9CA3AF" strokeWidth={1.5} />
           <Stack gap={0} lineHeight="1.2">
             <Text fontSize="sm" fontWeight="semibold" color="gray.900">
-              John Doe
+              {name}
             </Text>
             <Text fontSize="xs" color="gray.500">
-              Instructor
+              {role}
             </Text>
           </Stack>
         </HStack>
@@ -54,23 +68,21 @@ export function PageTopBar({ notificationCount = 1 }: { notificationCount?: numb
 }
 
 const STATUS_STYLES: Record<
-  AssignmentStatus | SubmissionStatus,
+  BadgeStatus,
   { label: string; color: string; bg: string }
 > = {
   active: { label: "Active", color: "#16A34A", bg: "#DCFCE7" },
+  published: { label: "Active", color: "#16A34A", bg: "#DCFCE7" },
   overdue: { label: "Overdue", color: "#EF4444", bg: "#FEE2E2" },
   draft: { label: "Draft", color: "#6B7280", bg: "#F3F4F6" },
+  archived: { label: "Archived", color: "#6B7280", bg: "#F3F4F6" },
   submitted: { label: "Submitted", color: "#F97461", bg: "#FFF1ED" },
   graded: { label: "Graded", color: "#3B82F6", bg: "#DBEAFE" },
   pending: { label: "Pending", color: "#F59E0B", bg: "#FEF3C7" },
 };
 
-export function StatusBadge({
-  status,
-}: {
-  status: AssignmentStatus | SubmissionStatus;
-}) {
-  const s = STATUS_STYLES[status];
+export function StatusBadge({ status }: { status: BadgeStatus }) {
+  const s = STATUS_STYLES[status] ?? STATUS_STYLES.draft;
   return (
     <HStack
       gap={1.5}

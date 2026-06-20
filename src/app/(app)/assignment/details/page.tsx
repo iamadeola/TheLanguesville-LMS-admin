@@ -7,24 +7,34 @@ import {
   Grid,
   HStack,
   Heading,
+  Link,
   Portal,
+  Skeleton,
   Stack,
   Text,
 } from "@chakra-ui/react";
 import { AlertCircle, ArrowLeft, FileText, Inbox } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { MetaItem, NumberCard, PageTopBar, StatusBadge } from "@/components/assignment/shared";
 import { assignmentPaths } from "@/lib/routes";
+import { getApiErrorMessage } from "@/lib/api/client";
 import {
-  type Submission,
+  type Assignment,
+  type AssignmentOverview,
+  type SubmissionListItem,
   deleteAssignment,
+  exportSubmissions,
   getAssignment,
-  submissionStats,
-} from "@/lib/mock/assignments";
+  getAssignmentOverview,
+  listSubmissions,
+  sendReminder,
+} from "@/lib/api/assignments";
 
 const AVATAR_COLORS = ["#F97461", "#6366F1", "#10B981", "#F59E0B", "#EC4899"];
+const SUB_COLS = "1.4fr 1.4fr 0.8fr 0.9fr 1fr 0.8fr";
+const PAGE_SIZE = 10;
 
 function initials(name: string) {
   return name
@@ -35,15 +45,45 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-const SUB_COLS = "1.4fr 1.4fr 0.8fr 0.9fr 1fr 0.8fr";
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  if (Number.isNaN(diff)) return "—";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return `${Math.floor(days / 7)}w ago`;
+}
+
+function formatDue(dueAt: string | null): string {
+  if (!dueAt) return "No due date";
+  const d = new Date(dueAt);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+/** First placement's populated course title, with a "+N" hint for multi-course. */
+function courseLabel(assignment: Assignment): string {
+  const first = assignment.placements[0]?.courseId;
+  const title =
+    first && typeof first === "object" ? first.title : undefined;
+  if (!title) return "—";
+  const extra = assignment.placements.length - 1;
+  return extra > 0 ? `${title} +${extra}` : title;
+}
 
 function SubmissionRow({
   submission,
   index,
+  totalPoints,
   onAction,
 }: {
-  submission: Submission;
+  submission: SubmissionListItem;
   index: number;
+  totalPoints: number;
   onAction: () => void;
 }) {
   const color = AVATAR_COLORS[index % AVATAR_COLORS.length];
@@ -78,13 +118,14 @@ function SubmissionRow({
         </Text>
       </HStack>
       <Text fontSize="sm" color="gray.700">
-        {submission.email}
+        {submission.studentEmail}
       </Text>
       <Text fontSize="sm" color="gray.700">
-        {submission.grade != null ? `${submission.grade}/100` : "—"}
+        {submission.score != null ? `${submission.score}/${totalPoints}` : "—"}
+        {submission.letterGrade ? ` (${submission.letterGrade})` : ""}
       </Text>
       <Text fontSize="sm" color="gray.700">
-        {submission.submittedAgo}
+        {timeAgo(submission.submittedAt)}
       </Text>
       <Box>
         <StatusBadge status={submission.status} />
@@ -114,13 +155,89 @@ function SubmissionRow({
 export default function AssignmentDetailPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const assignment = getAssignment(params.get("assignmentId"));
+  const assignmentId = params.get("assignmentId");
+
+  const [assignment, setAssignment] = useState<Assignment | null>(null);
+  const [overview, setOverview] = useState<AssignmentOverview | null>(null);
+  const [submissions, setSubmissions] = useState<SubmissionListItem[]>([]);
+  const [subTotalPoints, setSubTotalPoints] = useState(100);
+  const [subTotalPages, setSubTotalPages] = useState(1);
+  const [subPage, setSubPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [subsLoading, setSubsLoading] = useState(true);
 
   const [tab, setTab] = useState<"overview" | "instructions">("overview");
   const [reminderSent, setReminderSent] = useState(false);
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  if (!assignment) {
+  const fetchCore = useCallback(async () => {
+    if (!assignmentId) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const [a, o] = await Promise.all([
+      getAssignment(assignmentId),
+      getAssignmentOverview(assignmentId),
+    ]);
+    if (a.success) {
+      setAssignment(a.data);
+      setReminderSent(Boolean(a.data.lastReminderSentAt));
+    } else {
+      setNotFound(true);
+    }
+    if (o.success) setOverview(o.data);
+    setLoading(false);
+  }, [assignmentId]);
+
+  const fetchSubmissions = useCallback(async () => {
+    if (!assignmentId) return;
+    setSubsLoading(true);
+    const result = await listSubmissions(assignmentId, {
+      page: subPage,
+      limit: PAGE_SIZE,
+    });
+    if (result.success) {
+      setSubmissions(result.data.submissions);
+      setSubTotalPoints(result.data.totalPoints);
+      setSubTotalPages(result.data.totalPages || 1);
+    }
+    setSubsLoading(false);
+  }, [assignmentId, subPage]);
+
+  useEffect(() => {
+    const id = setTimeout(fetchCore, 0);
+    return () => clearTimeout(id);
+  }, [fetchCore]);
+
+  useEffect(() => {
+    const id = setTimeout(fetchSubmissions, 0);
+    return () => clearTimeout(id);
+  }, [fetchSubmissions]);
+
+  if (loading) {
+    return (
+      <Box pb={10}>
+        <PageTopBar />
+        <Box px={8}>
+          <Skeleton h="28px" w="320px" rounded="md" mb={3} />
+          <Skeleton h="16px" w="200px" rounded="md" mb={8} />
+          <HStack gap={5}>
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} h="96px" flex="1" rounded="xl" />
+            ))}
+          </HStack>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (notFound || !assignment) {
     return (
       <Box>
         <PageTopBar />
@@ -136,22 +253,56 @@ export default function AssignmentDetailPage() {
     );
   }
 
-  const stats = submissionStats(assignment);
+  const dueAt = overview?.dueAt ?? assignment.submission.dueAt;
+  const assignedCount = overview?.assignedCount ?? 0;
+  const submittedCount = overview?.submittedCount ?? 0;
+  const totalPoints = overview?.totalPoints ?? assignment.grading.totalPoints;
+  const links = assignment.resources.links;
+  const files = assignment.resources.files;
 
-  const handleSendReminder = () => {
-    setReminderSent(true);
-    toast.success("Reminder Sent", {
-      description: "A reminder has been sent out to all students.",
-    });
+  const handleSendReminder = async () => {
+    if (!assignmentId || sendingReminder) return;
+    setSendingReminder(true);
+    const result = await sendReminder(assignmentId);
+    if (result.success) {
+      setReminderSent(true);
+      toast.success("Reminder Sent", {
+        description: result.data.message || "A reminder has been sent out to all students.",
+      });
+    } else {
+      toast.error(getApiErrorMessage(result, "Couldn't send reminder"));
+    }
+    setSendingReminder(false);
   };
 
-  const handleDelete = () => {
-    deleteAssignment(assignment.id);
-    setConfirmingDelete(false);
-    toast.success("Assignment Deleted", {
-      description: "This assignment has been deleted successfully.",
-    });
-    router.push(assignmentPaths.list);
+  const handleExport = async () => {
+    if (!assignmentId || exporting) return;
+    setExporting(true);
+    const result = await exportSubmissions(assignmentId);
+    if (result.success) {
+      toast.success("Export started", {
+        description: "Your submissions CSV is downloading.",
+      });
+    } else {
+      toast.error(getApiErrorMessage(result, "Couldn't export submissions"));
+    }
+    setExporting(false);
+  };
+
+  const handleDelete = async () => {
+    if (!assignmentId || deleting) return;
+    setDeleting(true);
+    const result = await deleteAssignment(assignmentId);
+    if (result.success) {
+      setConfirmingDelete(false);
+      toast.success("Assignment Deleted", {
+        description: "This assignment has been deleted successfully.",
+      });
+      router.push(assignmentPaths.list);
+    } else {
+      toast.error(getApiErrorMessage(result, "Couldn't delete assignment"));
+      setDeleting(false);
+    }
   };
 
   return (
@@ -183,15 +334,15 @@ export default function AssignmentDetailPage() {
               {assignment.title}
             </Heading>
             <Text fontSize="sm" color="gray.500" mb={5}>
-              {assignment.courseName}
+              {courseLabel(assignment)}
             </Text>
             <HStack gap={10} align="flex-start">
-              <MetaItem label="Due date">{assignment.dueDate}</MetaItem>
-              <MetaItem label="Assigned to">All ({assignment.assignedTo})</MetaItem>
+              <MetaItem label="Due date">{formatDue(dueAt)}</MetaItem>
+              <MetaItem label="Assigned to">All ({assignedCount})</MetaItem>
               <MetaItem label="Submissions">
-                {stats.submitted}/{assignment.assignedTo}
+                {submittedCount}/{assignedCount}
               </MetaItem>
-              <MetaItem label="Completion">{stats.completion}%</MetaItem>
+              <MetaItem label="Completion">{overview?.completionRate ?? 0}%</MetaItem>
             </HStack>
           </Box>
 
@@ -215,7 +366,8 @@ export default function AssignmentDetailPage() {
               px={5}
               fontSize="sm"
               fontWeight="medium"
-              disabled={reminderSent}
+              loading={sendingReminder}
+              disabled={reminderSent || sendingReminder}
               onClick={handleSendReminder}
             >
               {reminderSent ? "Reminder sent" : "Send reminder"}
@@ -229,11 +381,9 @@ export default function AssignmentDetailPage() {
               fontSize="sm"
               fontWeight="medium"
               _hover={{ bg: "#262760" }}
-              onClick={() =>
-                toast.success("Export started", {
-                  description: "Your submissions export will download shortly.",
-                })
-              }
+              loading={exporting}
+              disabled={exporting}
+              onClick={handleExport}
             >
               Export submissions
             </Button>
@@ -271,12 +421,12 @@ export default function AssignmentDetailPage() {
         {tab === "overview" ? (
           <Stack gap={6}>
             <HStack gap={5} align="stretch">
-              <NumberCard label="Submitted" value={stats.submitted} />
-              <NumberCard label="Pending" value={stats.pending} />
-              <NumberCard label="Graded" value={stats.graded} />
+              <NumberCard label="Submitted" value={overview?.submittedCount ?? 0} />
+              <NumberCard label="Pending" value={overview?.pendingCount ?? 0} />
+              <NumberCard label="Graded" value={overview?.gradedCount ?? 0} />
               <NumberCard
                 label="Avg Score"
-                value={stats.graded > 0 ? `${stats.avgScore}/100` : 0}
+                value={overview?.avgScore != null ? `${overview.avgScore}/${totalPoints}` : "—"}
               />
             </HStack>
 
@@ -284,7 +434,15 @@ export default function AssignmentDetailPage() {
               Submissions
             </Heading>
 
-            {assignment.submissions.length === 0 ? (
+            {subsLoading ? (
+              <Box bg="white" rounded="xl" borderWidth="1px" borderColor="gray.200" p={6}>
+                <Stack gap={4}>
+                  {[...Array(3)].map((_, i) => (
+                    <Skeleton key={i} h="40px" rounded="md" />
+                  ))}
+                </Stack>
+              </Box>
+            ) : submissions.length === 0 ? (
               <Flex
                 direction="column"
                 align="center"
@@ -313,24 +471,58 @@ export default function AssignmentDetailPage() {
                   <Text fontSize="sm" color="gray.500">Status</Text>
                   <Text fontSize="sm" color="gray.500">Action</Text>
                 </Grid>
-                {assignment.submissions.map((s, i) => (
+                {submissions.map((s, i) => (
                   <SubmissionRow
                     key={s.id}
                     submission={s}
                     index={i}
+                    totalPoints={subTotalPoints}
                     onAction={() =>
-                      router.push(assignmentPaths.grade(assignment.id, s.id))
+                      router.push(assignmentPaths.grade(assignmentId!, s.id))
                     }
                   />
                 ))}
                 <Flex justify="space-between" align="center" px={5} py={4} borderTopWidth="1px" borderColor="gray.100">
-                  <Text fontSize="sm" color="gray.500">Page 1 of 10</Text>
+                  <Text fontSize="sm" color="gray.500">
+                    Page {subPage} of {subTotalPages}
+                  </Text>
                   <HStack gap={2}>
-                    {["Previous", "Next"].map((l) => (
-                      <Box key={l} as="button" px={4} py={2} rounded="md" borderWidth="1px" borderColor="gray.200" bg="white" fontSize="sm" fontWeight="medium" color="gray.700" cursor="pointer" _hover={{ bg: "gray.50" }}>
-                        {l}
-                      </Box>
-                    ))}
+                    <Box
+                      as="button"
+                      onClick={subPage <= 1 ? undefined : () => setSubPage((p) => Math.max(1, p - 1))}
+                      px={4}
+                      py={2}
+                      rounded="md"
+                      borderWidth="1px"
+                      borderColor="gray.200"
+                      bg="white"
+                      fontSize="sm"
+                      fontWeight="medium"
+                      color="gray.700"
+                      opacity={subPage <= 1 ? 0.5 : 1}
+                      cursor={subPage <= 1 ? "not-allowed" : "pointer"}
+                      _hover={subPage <= 1 ? undefined : { bg: "gray.50" }}
+                    >
+                      Previous
+                    </Box>
+                    <Box
+                      as="button"
+                      onClick={subPage >= subTotalPages ? undefined : () => setSubPage((p) => Math.min(subTotalPages, p + 1))}
+                      px={4}
+                      py={2}
+                      rounded="md"
+                      borderWidth="1px"
+                      borderColor="gray.200"
+                      bg="white"
+                      fontSize="sm"
+                      fontWeight="medium"
+                      color="gray.700"
+                      opacity={subPage >= subTotalPages ? 0.5 : 1}
+                      cursor={subPage >= subTotalPages ? "not-allowed" : "pointer"}
+                      _hover={subPage >= subTotalPages ? undefined : { bg: "gray.50" }}
+                    >
+                      Next
+                    </Box>
                   </HStack>
                 </Flex>
               </Box>
@@ -343,18 +535,18 @@ export default function AssignmentDetailPage() {
                 Instructions
               </Text>
               <Text fontSize="sm" color="gray.600" lineHeight="1.7">
-                {assignment.instructions}
+                {assignment.description || "No instructions provided."}
               </Text>
             </Stack>
-            {assignment.attachments.length > 0 ? (
+            {files.length > 0 ? (
               <Stack gap={3}>
                 <Text fontWeight="semibold" color="gray.900">
                   Attachments
                 </Text>
                 <Stack gap={0}>
-                  {assignment.attachments.map((att) => (
+                  {files.map((att) => (
                     <Flex
-                      key={att.id}
+                      key={att.fileUrl}
                       justify="space-between"
                       align="center"
                       py={4}
@@ -364,20 +556,43 @@ export default function AssignmentDetailPage() {
                       <HStack gap={3}>
                         <FileText size={18} color="#6B7280" />
                         <Text fontSize="sm" color="gray.700">
-                          {att.name}
+                          {att.fileName}
                         </Text>
                       </HStack>
-                      <Box
-                        as="button"
+                      <Link
+                        href={att.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         fontSize="sm"
                         fontWeight="medium"
                         color="gray.900"
                         cursor="pointer"
-                        onClick={() => toast.success(`Downloading ${att.name}`)}
                       >
                         Download
-                      </Box>
+                      </Link>
                     </Flex>
+                  ))}
+                </Stack>
+              </Stack>
+            ) : null}
+            {links.length > 0 ? (
+              <Stack gap={3}>
+                <Text fontWeight="semibold" color="gray.900">
+                  Links
+                </Text>
+                <Stack gap={2}>
+                  {links.map((l) => (
+                    <Link
+                      key={l}
+                      href={l}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      fontSize="sm"
+                      color="#2563EB"
+                      textDecoration="underline"
+                    >
+                      {l}
+                    </Link>
                   ))}
                 </Stack>
               </Stack>
@@ -431,6 +646,8 @@ export default function AssignmentDetailPage() {
                     fontSize="sm"
                     fontWeight="semibold"
                     _hover={{ bg: "#262760" }}
+                    loading={deleting}
+                    disabled={deleting}
                     onClick={handleDelete}
                   >
                     Delete

@@ -1,24 +1,45 @@
 "use client";
 
-import { Box, Flex, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Flex, HStack, Spinner, Stack, Text } from "@chakra-ui/react";
 import { Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { getApiErrorMessage } from "@/lib/api/client";
+import { uploadFile } from "@/lib/api/uploads";
 import { useWizard } from "./wizard-context";
 import { Card, StepHeading, TextField } from "./wizard-bits";
 
 export function StepResources() {
   const { draft, update } = useWizard();
   const [linkInput, setLinkInput] = useState("");
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const addFiles = (files: FileList | null) => {
-    if (!files) return;
-    const names = Array.from(files).map((f) => f.name);
-    update({ files: [...draft.files, ...names] });
+  const addFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    // Upload bytes first (POST /api/uploads) so each file has a real fileUrl.
+    const uploaded = [...draft.files];
+    for (const file of Array.from(files)) {
+      const result = await uploadFile(file);
+      if (result.success) {
+        uploaded.push({
+          fileName: result.data.fileName,
+          fileUrl: result.data.url,
+          fileSize: result.data.fileSize,
+          mimeType: result.data.mimeType,
+        });
+      } else {
+        toast.error(getApiErrorMessage(result, `Couldn't upload ${file.name}`));
+      }
+    }
+    update({ files: uploaded });
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = "";
   };
 
-  const removeFile = (name: string) =>
-    update({ files: draft.files.filter((f) => f !== name) });
+  const removeFile = (fileUrl: string) =>
+    update({ files: draft.files.filter((f) => f.fileUrl !== fileUrl) });
 
   const addLink = () => {
     const v = linkInput.trim();
@@ -56,17 +77,21 @@ export function StepResources() {
           borderStyle="dashed"
           borderColor="gray.300"
           rounded="lg"
-          cursor="pointer"
-          onClick={() => fileRef.current?.click()}
-          _hover={{ borderColor: "#2E2F6F", bg: "gray.50" }}
+          cursor={uploading ? "default" : "pointer"}
+          onClick={() => {
+            if (!uploading) fileRef.current?.click();
+          }}
+          _hover={uploading ? undefined : { borderColor: "#2E2F6F", bg: "gray.50" }}
           transition="all 0.15s"
         >
           <Flex w="44px" h="44px" rounded="lg" bg="gray.100" align="center" justify="center" color="gray.500">
-            <Upload size={20} />
+            {uploading ? <Spinner size="sm" /> : <Upload size={20} />}
           </Flex>
           <Stack gap={0.5} textAlign="center">
             <Text fontSize="sm" fontWeight="medium" color="gray.900">
-              Choose file or drag and drop here to upload
+              {uploading
+                ? "Uploading…"
+                : "Choose file or drag and drop here to upload"}
             </Text>
             <Text fontSize="xs" color="gray.500">
               PDF, DOCX, images, ZIP — up to 50MB each
@@ -77,9 +102,9 @@ export function StepResources() {
         {draft.files.length > 0 ? (
           <HStack gap={2} flexWrap="wrap" mt={4}>
             {draft.files.map((f) => (
-              <HStack key={f} gap={2} bg="gray.100" px={3} py={1.5} rounded="full" fontSize="sm" color="gray.700">
-                <Text>{f}</Text>
-                <Box as="button" onClick={() => removeFile(f)} cursor="pointer" color="gray.500" display="flex">
+              <HStack key={f.fileUrl} gap={2} bg="gray.100" px={3} py={1.5} rounded="full" fontSize="sm" color="gray.700">
+                <Text>{f.fileName}</Text>
+                <Box as="button" onClick={() => removeFile(f.fileUrl)} cursor="pointer" color="gray.500" display="flex">
                   <X size={14} />
                 </Box>
               </HStack>

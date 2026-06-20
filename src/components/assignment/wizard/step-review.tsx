@@ -2,8 +2,7 @@
 
 import { Box, Flex, HStack, Stack, Text } from "@chakra-ui/react";
 import { CheckCircle2, Pencil } from "lucide-react";
-import { TYPE_LABELS } from "@/lib/mock/assignments";
-import { courseTree } from "@/lib/mock/course-tree";
+import { TYPE_LABELS } from "@/lib/api/assignments";
 import { StepHeading } from "./wizard-bits";
 import { useWizard, type WizardStep } from "./wizard-context";
 
@@ -25,14 +24,14 @@ function formatTime(t: string): string {
 }
 
 export function StepReview() {
-  const { draft, setStep } = useWizard();
+  const { draft, setStep, courses } = useWizard();
 
   const selected = new Set(draft.selectedLessonIds);
   let courseName = "Not set";
   let lessonName = "Not set";
   const selectedCount = draft.selectedLessonIds.length;
-  outer: for (const course of courseTree) {
-    for (const m of course.modules) {
+  outer: for (const course of courses) {
+    for (const m of course.modules ?? []) {
       for (const l of m.lessons) {
         if (selected.has(l.id)) {
           courseName = course.title;
@@ -128,7 +127,7 @@ export function StepReview() {
               borderColor="gray.100"
             >
               <Text fontSize="sm" color="gray.500">
-                {c.label}
+                {c.name}
               </Text>
               <HStack gap={2}>
                 <Text fontSize="sm" color="gray.900" fontWeight="medium">

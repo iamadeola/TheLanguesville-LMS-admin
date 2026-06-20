@@ -1,10 +1,9 @@
 "use client";
 
-import { Box, Flex, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Flex, HStack, Skeleton, Spinner, Stack, Text } from "@chakra-ui/react";
 import { Check, ChevronDown, ChevronRight, Minus, X } from "lucide-react";
 import { useState } from "react";
-import { courseTree, type TreeCourse, type TreeModule } from "@/lib/mock/course-tree";
-import { useWizard } from "./wizard-context";
+import { type TreeCourse, type TreeModule, useWizard } from "./wizard-context";
 
 type SelState = "none" | "partial" | "all";
 
@@ -21,11 +20,10 @@ function moduleLessonIds(m: TreeModule): string[] {
 }
 
 function courseLessonIds(c: TreeCourse): string[] {
-  return c.modules.flatMap(moduleLessonIds);
+  return c.modules ? c.modules.flatMap(moduleLessonIds) : [];
 }
 
 function shortLabel(title: string): string {
-  // "Module 1 - Introduction" -> "Introduction"; "Lesson 1 - Greetings" -> "Greetings"
   const idx = title.indexOf(" - ");
   return idx >= 0 ? title.slice(idx + 3) : title;
 }
@@ -53,9 +51,10 @@ interface Placement {
   lessonIds: string[];
 }
 
-function computePlacements(selected: Set<string>): Placement[] {
+function computePlacements(courses: TreeCourse[], selected: Set<string>): Placement[] {
   const placements: Placement[] = [];
-  for (const course of courseTree) {
+  for (const course of courses) {
+    if (!course.modules) continue;
     const cIds = courseLessonIds(course);
     const cState = selStateFor(cIds, selected);
     if (cState === "none") continue;
@@ -88,7 +87,7 @@ function computePlacements(selected: Set<string>): Placement[] {
 }
 
 export function CourseTreePicker() {
-  const { draft, update } = useWizard();
+  const { draft, update, courses, coursesLoading, loadCourse } = useWizard();
   const selected = new Set(draft.selectedLessonIds);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -104,7 +103,17 @@ export function CourseTreePicker() {
     setSelected(next);
   };
 
-  const toggleExpand = (id: string) =>
+  const toggleExpand = (course: TreeCourse) => {
+    if (course.modules === null) loadCourse(course.id);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(course.id)) next.delete(course.id);
+      else next.add(course.id);
+      return next;
+    });
+  };
+
+  const toggleExpandModule = (id: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -112,11 +121,32 @@ export function CourseTreePicker() {
       return next;
     });
 
-  const placements = computePlacements(selected);
+  const placements = computePlacements(courses, selected);
+
+  if (coursesLoading) {
+    return (
+      <Stack gap={3}>
+        {[0, 1].map((i) => (
+          <Skeleton key={i} h="64px" rounded="xl" />
+        ))}
+      </Stack>
+    );
+  }
+
+  if (courses.length === 0) {
+    return (
+      <Box borderWidth="1px" borderColor="gray.200" rounded="xl" px={4} py={8} textAlign="center">
+        <Text fontSize="sm" color="gray.500">
+          You don&apos;t have any courses yet. Create a course first to place an
+          assignment in it.
+        </Text>
+      </Box>
+    );
+  }
 
   return (
     <Stack gap={3}>
-      {courseTree.map((course) => {
+      {courses.map((course) => {
         const cIds = courseLessonIds(course);
         const cState = selStateFor(cIds, selected);
         const isOpen = expanded.has(course.id);
@@ -127,13 +157,20 @@ export function CourseTreePicker() {
             <Flex align="center" gap={3} px={4} py={3.5}>
               <Box
                 as="button"
-                onClick={() => toggleMany(cIds, cState !== "all")}
+                onClick={() => {
+                  if (course.modules === null) {
+                    loadCourse(course.id);
+                    setExpanded((prev) => new Set(prev).add(course.id));
+                  } else {
+                    toggleMany(cIds, cState !== "all");
+                  }
+                }}
                 cursor="pointer"
                 display="flex"
               >
                 <SelectIndicator state={cState} />
               </Box>
-              <Box flex="1" cursor="pointer" onClick={() => toggleExpand(course.id)}>
+              <Box flex="1" cursor="pointer" onClick={() => toggleExpand(course)}>
                 <HStack gap={2}>
                   <Text fontSize="sm" fontWeight="semibold" color="gray.900">
                     {course.title}
@@ -146,7 +183,7 @@ export function CourseTreePicker() {
                   {course.moduleCount} modules • {course.lessonCount} lessons • {course.studentCount} students
                 </Text>
               </Box>
-              <Box as="button" onClick={() => toggleExpand(course.id)} color="gray.400" cursor="pointer">
+              <Box as="button" onClick={() => toggleExpand(course)} color="gray.400" cursor="pointer">
                 {isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
               </Box>
             </Flex>
@@ -154,61 +191,72 @@ export function CourseTreePicker() {
             {/* Modules */}
             {isOpen ? (
               <Box borderTopWidth="1px" borderColor="gray.100" px={4} py={2}>
-                <Stack gap={1}>
-                  {course.modules.map((m) => {
-                    const mIds = moduleLessonIds(m);
-                    const mState = selStateFor(mIds, selected);
-                    const mOpen = expanded.has(m.id);
-                    return (
-                      <Box key={m.id}>
-                        <Flex align="center" gap={3} py={2}>
-                          <Box as="button" onClick={() => toggleExpand(m.id)} color="gray.400" cursor="pointer">
-                            {mOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                          </Box>
-                          <Box
-                            as="button"
-                            onClick={() => toggleMany(mIds, mState !== "all")}
-                            cursor="pointer"
-                            display="flex"
-                          >
-                            <SelectIndicator state={mState} />
-                          </Box>
-                          <Text flex="1" fontSize="sm" color="gray.800" cursor="pointer" onClick={() => toggleExpand(m.id)}>
-                            {m.title}
-                          </Text>
-                          <Box bg="gray.100" color="gray.500" fontSize="xs" fontWeight="medium" px={2} py={0.5} rounded="md">
-                            {m.lessons.length} lessons
-                          </Box>
-                        </Flex>
+                {course.loading ? (
+                  <Flex align="center" gap={2} py={3} color="gray.500">
+                    <Spinner size="sm" />
+                    <Text fontSize="sm">Loading lessons…</Text>
+                  </Flex>
+                ) : course.modules && course.modules.length > 0 ? (
+                  <Stack gap={1}>
+                    {course.modules.map((m) => {
+                      const mIds = moduleLessonIds(m);
+                      const mState = selStateFor(mIds, selected);
+                      const mOpen = expanded.has(m.id);
+                      return (
+                        <Box key={m.id}>
+                          <Flex align="center" gap={3} py={2}>
+                            <Box as="button" onClick={() => toggleExpandModule(m.id)} color="gray.400" cursor="pointer">
+                              {mOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                            </Box>
+                            <Box
+                              as="button"
+                              onClick={() => toggleMany(mIds, mState !== "all")}
+                              cursor="pointer"
+                              display="flex"
+                            >
+                              <SelectIndicator state={mState} />
+                            </Box>
+                            <Text flex="1" fontSize="sm" color="gray.800" cursor="pointer" onClick={() => toggleExpandModule(m.id)}>
+                              {m.title}
+                            </Text>
+                            <Box bg="gray.100" color="gray.500" fontSize="xs" fontWeight="medium" px={2} py={0.5} rounded="md">
+                              {m.lessons.length} lessons
+                            </Box>
+                          </Flex>
 
-                        {mOpen ? (
-                          <Stack gap={0} pl={9} pb={1}>
-                            {m.lessons.map((l) => {
-                              const on = selected.has(l.id);
-                              return (
-                                <Flex
-                                  key={l.id}
-                                  as="button"
-                                  onClick={() => toggleMany([l.id], !on)}
-                                  align="center"
-                                  gap={3}
-                                  py={1.5}
-                                  cursor="pointer"
-                                  textAlign="left"
-                                >
-                                  <SelectIndicator state={on ? "all" : "none"} />
-                                  <Text fontSize="sm" color="gray.700">
-                                    {l.title}
-                                  </Text>
-                                </Flex>
-                              );
-                            })}
-                          </Stack>
-                        ) : null}
-                      </Box>
-                    );
-                  })}
-                </Stack>
+                          {mOpen ? (
+                            <Stack gap={0} pl={9} pb={1}>
+                              {m.lessons.map((l) => {
+                                const on = selected.has(l.id);
+                                return (
+                                  <Flex
+                                    key={l.id}
+                                    as="button"
+                                    onClick={() => toggleMany([l.id], !on)}
+                                    align="center"
+                                    gap={3}
+                                    py={1.5}
+                                    cursor="pointer"
+                                    textAlign="left"
+                                  >
+                                    <SelectIndicator state={on ? "all" : "none"} />
+                                    <Text fontSize="sm" color="gray.700">
+                                      {l.title}
+                                    </Text>
+                                  </Flex>
+                                );
+                              })}
+                            </Stack>
+                          ) : null}
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                ) : (
+                  <Text fontSize="sm" color="gray.400" py={3}>
+                    This course has no lessons yet.
+                  </Text>
+                )}
               </Box>
             ) : null}
           </Box>
