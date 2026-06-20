@@ -243,6 +243,7 @@ export interface AddBlockPayload {
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
+  fileUrl?: string;
   order?: number;
 }
 
@@ -252,6 +253,7 @@ export interface UpdateBlockPayload {
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
+  fileUrl?: string;
 }
 
 export async function addApiBlock(

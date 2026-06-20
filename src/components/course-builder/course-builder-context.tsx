@@ -30,7 +30,10 @@ export interface FileBlock {
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
+  /** Local data URL used for an instant preview before/while uploading. */
   dataUrl?: string;
+  /** Backend URL of the uploaded file, persisted with the block. */
+  fileUrl?: string;
 }
 
 export type LessonBlock = TextBlock | VideoBlock | FileBlock;

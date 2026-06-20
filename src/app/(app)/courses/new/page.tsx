@@ -10,12 +10,15 @@ import {
 import { CourseBuilderShell } from "@/components/course-builder/course-builder-shell";
 import { CourseSetupStep } from "@/components/course-builder/course-setup-step";
 import { CurriculumStep } from "@/components/course-builder/curriculum-step";
-import { LessonEditor } from "@/components/course-builder/lesson-editor";
+import {
+  LessonEditor,
+  saveLessonBlocks,
+} from "@/components/course-builder/lesson-editor";
 import { ReviewStep } from "@/components/course-builder/review-step";
 import type { ApiResult } from "@/lib/api/client";
 import type { CourseSummary } from "@/lib/api/courses";
 import { publishCourse } from "@/lib/api/courses";
-import { apiClient } from "@/lib/api/client";
+import { apiClient, getApiErrorMessage } from "@/lib/api/client";
 
 function NewCourseFlow() {
   const router = useRouter();
@@ -33,6 +36,7 @@ function NewCourseFlow() {
   } = useCourseBuilder();
   const [creating, setCreating] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [savingLesson, setSavingLesson] = useState(false);
 
   const handleProceedFromSetup = async () => {
     setCreating(true);
@@ -88,14 +92,33 @@ function NewCourseFlow() {
       return null;
     }
     const hasContent = lesson.blocks.length > 0;
+    const finishLesson = async () => {
+      if (courseId) {
+        setSavingLesson(true);
+        const result = await saveLessonBlocks(courseId, mod.id, lesson);
+        setSavingLesson(false);
+        if (!result.success) {
+          toast.error(
+            getApiErrorMessage(
+              result,
+              "Couldn't save this lesson. Please try again.",
+            ),
+          );
+          return;
+        }
+        toast.success("Lesson saved");
+      }
+      setEditingLesson(null);
+    };
     return (
       <CourseBuilderShell
-        primaryLabel="Add lesson"
-        primaryDisabled={!hasContent}
-        onPrimary={() => setEditingLesson(null)}
-        onPrevious={() => setEditingLesson(null)}
+        primaryLabel="Save lesson"
+        primaryDisabled={!hasContent || savingLesson}
+        primaryLoading={savingLesson}
+        onPrimary={finishLesson}
+        hidePrevious
       >
-        <LessonEditor mod={mod} lesson={lesson} />
+        <LessonEditor mod={mod} lesson={lesson} onDone={finishLesson} />
       </CourseBuilderShell>
     );
   }

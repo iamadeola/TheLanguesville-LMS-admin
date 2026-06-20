@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AspectRatio,
   Box,
   Button,
   Flex,
@@ -97,23 +98,24 @@ function ContentBlockCard({ block }: { block: ApiContentBlock }) {
           </Box>
         )}
         <Box px={5} pb={5}>
-          <iframe
-            src={toEmbedUrl(block.url ?? "")}
-            title={block.title ?? "Video"}
-            style={{
-              width: "100%",
-              height: 320,
-              border: 0,
-              borderRadius: 8,
-              display: "block",
-            }}
-          />
+          <AspectRatio ratio={16 / 9} rounded="md" overflow="hidden" bg="black">
+            <iframe
+              src={toEmbedUrl(block.url ?? "")}
+              title={block.title ?? "Video"}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              style={{ border: 0 }}
+            />
+          </AspectRatio>
         </Box>
       </Box>
     );
   }
 
   if (block.type === "file") {
+    const mime = block.mimeType ?? "";
+    const isImage = mime.startsWith("image/");
+    const isPdf = mime === "application/pdf";
     return (
       <Box
         bg="white"
@@ -127,6 +129,38 @@ function ContentBlockCard({ block }: { block: ApiContentBlock }) {
             {block.title}
           </Text>
         )}
+
+        {block.fileUrl && isImage ? (
+          <Box
+            rounded="md"
+            borderWidth="1px"
+            borderColor="gray.200"
+            overflow="hidden"
+            mb={3}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={block.fileUrl}
+              alt={block.fileName ?? "Attachment"}
+              style={{ width: "100%", display: "block" }}
+            />
+          </Box>
+        ) : block.fileUrl && isPdf ? (
+          <Box
+            rounded="md"
+            borderWidth="1px"
+            borderColor="gray.200"
+            overflow="hidden"
+            mb={3}
+          >
+            <iframe
+              src={block.fileUrl}
+              title={block.fileName ?? "PDF preview"}
+              style={{ width: "100%", height: 480, border: 0, display: "block" }}
+            />
+          </Box>
+        ) : null}
+
         <HStack gap={3} mt={1}>
           <a
             href={block.fileUrl}
