@@ -1,6 +1,6 @@
 "use client";
 
-import { Flex } from "@chakra-ui/react";
+import { Flex, Image } from "@chakra-ui/react";
 
 const AVATAR_COLORS = ["#F97461", "#6366F1", "#10B981", "#F59E0B", "#EC4899", "#3B82F6"];
 
@@ -20,8 +20,39 @@ function colorFor(name: string): string {
   return AVATAR_COLORS[hash % AVATAR_COLORS.length];
 }
 
-export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
+/**
+ * Circular student avatar. Renders `src` (the API's `avatarUrl`) as a photo
+ * when present; otherwise falls back to coloured initials. `initials` lets the
+ * caller pass the server-provided value instead of deriving it from `name`.
+ */
+export function Avatar({
+  name,
+  src,
+  initials: initialsOverride,
+  size = 32,
+}: {
+  name: string;
+  src?: string | null;
+  initials?: string;
+  size?: number;
+}) {
   const color = colorFor(name);
+  const label = initialsOverride || initials(name);
+
+  if (src) {
+    return (
+      <Image
+        src={src}
+        alt={name}
+        w={`${size}px`}
+        h={`${size}px`}
+        rounded="full"
+        objectFit="cover"
+        flexShrink={0}
+      />
+    );
+  }
+
   return (
     <Flex
       w={`${size}px`}
@@ -35,7 +66,7 @@ export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
       fontWeight="semibold"
       flexShrink={0}
     >
-      {initials(name)}
+      {label}
     </Flex>
   );
 }
