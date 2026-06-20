@@ -1,8 +1,9 @@
 "use client";
 
-import { Box, Flex, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Flex, HStack, Spinner, Stack, Text } from "@chakra-ui/react";
 import { FileIcon, Upload, X } from "lucide-react";
 import { type DragEvent, useRef, useState } from "react";
+import { uploadFile } from "@/lib/api/uploads";
 import type { FileBlock as FileBlockModel } from "../course-builder-context";
 
 interface FileBlockProps {
@@ -35,16 +36,18 @@ export function FileBlock({ block, onChange }: FileBlockProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const hasFile = Boolean(block.fileName);
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     setError(null);
     if (file.size > MAX_SIZE_MB * 1024 * 1024) {
       setError(`File is larger than ${MAX_SIZE_MB}MB`);
       return;
     }
-    // Read as data URL so the file can be previewed later without uploading
+
+    // Show an instant local preview (data URL) while the upload runs.
     const reader = new FileReader();
     reader.onload = () => {
       onChange({
@@ -55,11 +58,29 @@ export function FileBlock({ block, onChange }: FileBlockProps) {
       });
     };
     reader.readAsDataURL(file);
+
+    // Upload the raw bytes so the file is stored server-side and gets a stable
+    // URL other devices can load. `fileUrl` is what we persist with the block.
+    setUploading(true);
+    const result = await uploadFile(file);
+    setUploading(false);
+    if (result.success) {
+      onChange({
+        fileName: result.data.fileName ?? file.name,
+        fileSize: result.data.fileSize ?? file.size,
+        mimeType: result.data.mimeType ?? file.type,
+        fileUrl: result.data.url,
+      });
+    } else {
+      setError(
+        result.message || "Couldn't upload this file. Please try again.",
+      );
+    }
   };
 
   const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) processFile(file);
+    if (file) void processFile(file);
     // reset so the same file can be re-selected later
     e.target.value = "";
   };
@@ -68,7 +89,7 @@ export function FileBlock({ block, onChange }: FileBlockProps) {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) processFile(file);
+    if (file) void processFile(file);
   };
 
   const clear = () => {
@@ -77,6 +98,7 @@ export function FileBlock({ block, onChange }: FileBlockProps) {
       fileSize: undefined,
       mimeType: undefined,
       dataUrl: undefined,
+      fileUrl: undefined,
     });
   };
 
@@ -88,9 +110,19 @@ export function FileBlock({ block, onChange }: FileBlockProps) {
         </Text>
         <FilePreview block={block} />
         <HStack gap={3} justify="space-between">
-          <Text fontSize="xs" color="gray.500">
-            {formatSize(block.fileSize)}
-          </Text>
+          {uploading ? (
+            <HStack gap={2} color="#2E2F6F">
+              <Spinner size="xs" />
+              <Text fontSize="xs" fontWeight="medium">
+                Uploading…
+              </Text>
+            </HStack>
+          ) : (
+            <Text fontSize="xs" color="gray.500">
+              {formatSize(block.fileSize)}
+              {block.fileUrl ? " · Uploaded" : ""}
+            </Text>
+          )}
           <HStack gap={3}>
             <Text
               fontSize="xs"
@@ -193,8 +225,11 @@ function FilePreview({ block }: { block: FileBlockModel }) {
   const mime = block.mimeType ?? "";
   const isImage = mime.startsWith("image/");
   const isPdf = mime === "application/pdf";
+  // Prefer the instant local data URL; fall back to the stored backend URL
+  // (e.g. when re-opening an existing course in the edit flow).
+  const src = block.dataUrl ?? block.fileUrl;
 
-  if (isImage && block.dataUrl) {
+  if (isImage && src) {
     return (
       <Box
         rounded="md"
@@ -205,7 +240,7 @@ function FilePreview({ block }: { block: FileBlockModel }) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={block.dataUrl}
+          src={src}
           alt={block.fileName ?? "Uploaded file"}
           style={{ maxHeight: 300, display: "block" }}
         />
@@ -213,7 +248,7 @@ function FilePreview({ block }: { block: FileBlockModel }) {
     );
   }
 
-  if (isPdf && block.dataUrl) {
+  if (isPdf && src) {
     return (
       <Box
         rounded="md"
@@ -222,9 +257,9 @@ function FilePreview({ block }: { block: FileBlockModel }) {
         overflow="hidden"
       >
         <iframe
-          src={block.dataUrl}
+          src={src}
           title={block.fileName ?? "Uploaded PDF"}
-          style={{ width: "100%", height: 320, border: 0, display: "block" }}
+          style={{ width: "100%", height: 460, border: 0, display: "block" }}
         />
       </Box>
     );

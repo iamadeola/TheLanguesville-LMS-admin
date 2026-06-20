@@ -1,6 +1,6 @@
 "use client";
 
-import { Box, Button, Flex, HStack, IconButton, Text } from "@chakra-ui/react";
+import { Box, Flex, HStack, IconButton, Text } from "@chakra-ui/react";
 import { FileText, Link2, Trash2, Video, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { BlockType } from "../course-builder-context";
@@ -15,7 +15,6 @@ interface BlockWrapperProps {
   type: BlockType;
   index: number;
   children: ReactNode;
-  onSave: () => void;
   onRemove: () => void;
 }
 
@@ -23,7 +22,6 @@ export function BlockWrapper({
   type,
   index,
   children,
-  onSave,
   onRemove,
 }: BlockWrapperProps) {
   const meta = BLOCK_META[type];
@@ -57,31 +55,15 @@ export function BlockWrapper({
             {meta.label}
           </Text>
         </HStack>
-        <HStack gap={1}>
-          <Button
-            size="xs"
-            bg="#2E2F6F"
-            color="white"
-            rounded="md"
-            px={3}
-            h="24px"
-            fontSize="xs"
-            fontWeight="medium"
-            _hover={{ bg: "#262760" }}
-            onClick={onSave}
-          >
-            Save
-          </Button>
-          <IconButton
-            aria-label={`Delete block ${index + 1}`}
-            variant="ghost"
-            size="xs"
-            color="#DC2626"
-            onClick={onRemove}
-          >
-            <Trash2 size={14} />
-          </IconButton>
-        </HStack>
+        <IconButton
+          aria-label={`Delete block ${index + 1}`}
+          variant="ghost"
+          size="xs"
+          color="#DC2626"
+          onClick={onRemove}
+        >
+          <Trash2 size={14} />
+        </IconButton>
       </Flex>
       <Box p={4}>{children}</Box>
     </Box>

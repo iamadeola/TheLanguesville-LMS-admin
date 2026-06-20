@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import type { ApiResult } from "@/lib/api/client";
 import {
   addApiBlock,
   updateApiBlock,
@@ -43,9 +44,15 @@ import {
 interface LessonEditorProps {
   mod: Module;
   lesson: Lesson;
+  /**
+   * Leaves the editor. The parent wires this to persist every block first, so
+   * any way of exiting (footer button or the breadcrumb back arrow) saves the
+   * lesson — there is no separate per-block save to forget.
+   */
+  onDone?: () => void;
 }
 
-export function LessonEditor({ mod, lesson }: LessonEditorProps) {
+export function LessonEditor({ mod, lesson, onDone }: LessonEditorProps) {
   const {
     courseId,
     setEditingLesson,
@@ -77,37 +84,6 @@ export function LessonEditor({ mod, lesson }: LessonEditorProps) {
     [courseId, mod.id, lesson.id, addBlock],
   );
 
-  const handleSaveBlock = useCallback(
-    async (blockId: string) => {
-      if (!courseId) return;
-      const block = lesson.blocks.find((b) => b.id === blockId);
-      if (!block) return;
-      const payload =
-        block.type === "text"
-          ? { content: block.html }
-          : block.type === "video"
-            ? { url: block.url }
-            : {
-                fileName: (block as FileBlockModel).fileName,
-                fileSize: (block as FileBlockModel).fileSize,
-                mimeType: (block as FileBlockModel).mimeType,
-              };
-      const result = await updateApiBlock(
-        courseId,
-        mod.id,
-        lesson.id,
-        blockId,
-        payload,
-      );
-      if (result.success) {
-        toast.success("Block saved");
-      } else {
-        toast.error(result.message || "Failed to save block");
-      }
-    },
-    [courseId, mod.id, lesson.id, lesson.blocks],
-  );
-
   const handleRemoveBlock = useCallback(
     async (blockId: string) => {
       if (!courseId) {
@@ -124,7 +100,7 @@ export function LessonEditor({ mod, lesson }: LessonEditorProps) {
     [courseId, mod.id, lesson.id, removeBlock],
   );
 
-  const goBack = () => setEditingLesson(null);
+  const goBack = () => (onDone ? onDone() : setEditingLesson(null));
 
   const startEditing = () => {
     setDraftTitle(lesson.title);
@@ -273,7 +249,6 @@ export function LessonEditor({ mod, lesson }: LessonEditorProps) {
               key={block.id}
               type={block.type}
               index={idx}
-              onSave={() => void handleSaveBlock(block.id)}
               onRemove={() => void handleRemoveBlock(block.id)}
             >
               {block.type === "text" ? (
@@ -318,4 +293,40 @@ export function LessonEditor({ mod, lesson }: LessonEditorProps) {
       )}
     </Stack>
   );
+}
+
+/**
+ * Persists the content of every block in a lesson in one shot. The builder
+ * creates each block server-side as soon as it's added (to get an id) but holds
+ * the typed content in local state; this flushes that content to the API. It is
+ * the single save action behind the lesson editor's primary button, replacing
+ * the old per-block "Save" buttons so users can't leave content unsaved.
+ */
+export async function saveLessonBlocks(
+  courseId: string,
+  moduleId: string,
+  lesson: Lesson,
+): Promise<ApiResult<true>> {
+  for (const block of lesson.blocks) {
+    const payload =
+      block.type === "text"
+        ? { content: block.html }
+        : block.type === "video"
+          ? { url: block.url }
+          : {
+              fileName: block.fileName,
+              fileSize: block.fileSize,
+              mimeType: block.mimeType,
+              fileUrl: block.fileUrl,
+            };
+    const result = await updateApiBlock(
+      courseId,
+      moduleId,
+      lesson.id,
+      block.id,
+      payload,
+    );
+    if (!result.success) return result;
+  }
+  return { success: true, data: true };
 }

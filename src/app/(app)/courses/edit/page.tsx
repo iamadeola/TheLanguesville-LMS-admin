@@ -13,8 +13,12 @@ import {
 } from "@/components/course-builder/course-builder-context";
 import { CourseSetupStep } from "@/components/course-builder/course-setup-step";
 import { CurriculumStep } from "@/components/course-builder/curriculum-step";
-import { LessonEditor } from "@/components/course-builder/lesson-editor";
+import {
+  LessonEditor,
+  saveLessonBlocks,
+} from "@/components/course-builder/lesson-editor";
 import { coursePaths } from "@/lib/routes";
+import { getApiErrorMessage } from "@/lib/api/client";
 import { type ApiCourse, getCourse, updateCourse } from "@/lib/api/courses";
 
 function mapCourseToDraft(course: ApiCourse): CourseDraft {
@@ -41,6 +45,7 @@ function mapCourseToDraft(course: ApiCourse): CourseDraft {
             fileName: b.fileName,
             fileSize: b.fileSize,
             mimeType: b.mimeType,
+            fileUrl: b.fileUrl,
           };
         }),
       })),
@@ -72,6 +77,7 @@ function EditFlow({
   } = useCourseBuilder();
 
   const [saving, setSaving] = useState(false);
+  const [savingLesson, setSavingLesson] = useState(false);
 
   useEffect(() => {
     if (openModuleId && openLessonId) {
@@ -124,15 +130,33 @@ function EditFlow({
       setEditingLesson(null);
       return null;
     }
+    const finishLesson = async () => {
+      setSavingLesson(true);
+      const result = await saveLessonBlocks(courseId, mod.id, lesson);
+      setSavingLesson(false);
+      if (!result.success) {
+        toast.error(
+          getApiErrorMessage(
+            result,
+            "Couldn't save this lesson. Please try again.",
+          ),
+        );
+        return;
+      }
+      toast.success("Lesson saved");
+      setEditingLesson(null);
+    };
     return (
       <EditCourseShell
         courseTitle={course.title}
         courseId={courseId}
-        primaryLabel="Done"
-        onPrimary={() => setEditingLesson(null)}
-        onPrevious={() => setEditingLesson(null)}
+        primaryLabel="Save lesson"
+        primaryDisabled={savingLesson}
+        primaryLoading={savingLesson}
+        onPrimary={finishLesson}
+        hidePrevious
       >
-        <LessonEditor mod={mod} lesson={lesson} />
+        <LessonEditor mod={mod} lesson={lesson} onDone={finishLesson} />
       </EditCourseShell>
     );
   }
