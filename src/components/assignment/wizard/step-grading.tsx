@@ -2,7 +2,7 @@
 
 import { Box, Flex, Grid, HStack, Stack, Text } from "@chakra-ui/react";
 import { Cpu, List, Pencil, Plus, Trash2 } from "lucide-react";
-import type { GradingMethod } from "@/lib/mock/assignments";
+import type { GradingMethod } from "@/lib/api/assignments";
 import { SelectableCard } from "@/components/assignment/shared";
 import { useWizard } from "./wizard-context";
 import { Card, FieldLabel, StepHeading, TextField } from "./wizard-bits";
@@ -74,8 +74,8 @@ export function StepGrading() {
               <HStack key={c.id} gap={3}>
                 <TextField
                   flex="1"
-                  value={c.label}
-                  onChange={(e) => updateCriterion(c.id, { label: e.target.value })}
+                  value={c.name}
+                  onChange={(e) => updateCriterion(c.id, { name: e.target.value })}
                 />
                 <TextField
                   type="number"

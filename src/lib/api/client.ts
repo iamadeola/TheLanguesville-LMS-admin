@@ -5,7 +5,9 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ??
   "https://backend.thelanguesville.com/api";
 
-type ApiSuccess<T> = { success: true; data: T };
+// The backend wraps every JSON response in this envelope. On success it may
+// also carry a human-readable `message` (e.g. "Profile updated successfully").
+type ApiSuccess<T> = { success: true; data: T; message?: string };
 export type ApiError = {
   success: false;
   message: string;

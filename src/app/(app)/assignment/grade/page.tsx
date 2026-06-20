@@ -8,23 +8,44 @@ import {
   HStack,
   Heading,
   Input,
+  Link,
+  Skeleton,
   Stack,
   Text,
   Textarea,
 } from "@chakra-ui/react";
 import { ArrowLeft, ChevronLeft, ChevronRight, CircleCheck, FileText } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PageTopBar, StatusBadge } from "@/components/assignment/shared";
 import { assignmentPaths } from "@/lib/routes";
-import { getAssignment, gradeLetter, gradeSubmission } from "@/lib/mock/assignments";
+import { getApiErrorMessage } from "@/lib/api/client";
+import {
+  type GradingView,
+  getSubmission,
+  gradeLetter,
+  gradeSubmission,
+} from "@/lib/api/assignments";
 
 const QUICK_FEEDBACK = [
   "Excellent work - keep it up!",
   "Watch arrangement of past participles",
   "Try varying your sentence openers",
 ];
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  if (Number.isNaN(diff)) return "—";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return `${Math.floor(days / 7)}w ago`;
+}
 
 function NavCircle({
   onClick,
@@ -63,27 +84,66 @@ export default function GradeSubmissionPage() {
   const assignmentId = params.get("assignmentId");
   const submissionId = params.get("submissionId");
 
-  const assignment = getAssignment(assignmentId);
-  const subIndex =
-    assignment?.submissions.findIndex((s) => s.id === submissionId) ?? -1;
-  const submission = subIndex >= 0 ? assignment!.submissions[subIndex] : undefined;
+  const [view, setView] = useState<GradingView | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const isRubric = assignment?.gradingMethod === "rubric";
-
-  const [mode, setMode] = useState<"edit" | "graded">(
-    submission?.status === "graded" ? "graded" : "edit",
-  );
-  const [manualScore, setManualScore] = useState<number>(submission?.grade ?? 0);
+  const [mode, setMode] = useState<"edit" | "graded">("edit");
+  const [manualScore, setManualScore] = useState(0);
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  const [feedback, setFeedback] = useState<string>(submission?.feedback ?? "");
+  const [feedback, setFeedback] = useState("");
 
-  const score = !isRubric
-    ? manualScore
-    : (assignment?.rubric
-        .filter((c) => checked.has(c.id))
-        .reduce((sum, c) => sum + c.points, 0) ?? 0);
+  const load = useCallback(async () => {
+    if (!assignmentId || !submissionId) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const result = await getSubmission(assignmentId, submissionId);
+    if (result.success) {
+      const { submission } = result.data;
+      setView(result.data);
+      setMode(submission.status === "graded" ? "graded" : "edit");
+      setManualScore(submission.score ?? 0);
+      setFeedback(submission.feedback ?? "");
+      // Seed rubric selection from any previously-awarded marks.
+      setChecked(
+        new Set(
+          submission.rubricMarks
+            .filter((m) => m.awarded)
+            .map((m) => m.criterionId),
+        ),
+      );
+    } else {
+      setNotFound(true);
+    }
+    setLoading(false);
+  }, [assignmentId, submissionId]);
 
-  if (!assignment || !submission) {
+  useEffect(() => {
+    const id = setTimeout(load, 0);
+    return () => clearTimeout(id);
+  }, [load]);
+
+  if (loading) {
+    return (
+      <Box pb={10}>
+        <PageTopBar />
+        <Box px={8}>
+          <Skeleton h="28px" w="240px" rounded="md" mb={2} />
+          <Skeleton h="16px" w="180px" rounded="md" mb={6} />
+          <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={6}>
+            <Skeleton h="320px" rounded="xl" />
+            <Skeleton h="320px" rounded="xl" />
+          </Grid>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (notFound || !view) {
     return (
       <Box>
         <PageTopBar />
@@ -99,19 +159,47 @@ export default function GradeSubmissionPage() {
     );
   }
 
-  const { letter, color } = gradeLetter(score);
+  const { submission, assignment, prevSubmissionId, nextSubmissionId } = view;
+  const grading = assignment.grading;
+  const isRubric = grading.method === "rubric";
+  const totalPoints = grading.totalPoints;
 
-  const goTo = (idx: number) => {
-    const next = assignment.submissions[idx];
-    if (next) router.push(assignmentPaths.grade(assignment.id, next.id));
+  const score = isRubric
+    ? grading.rubric
+        .filter((c) => checked.has(c.id))
+        .reduce((sum, c) => sum + c.points, 0)
+    : manualScore;
+
+  const { letter, color } = gradeLetter(score, totalPoints);
+
+  const goTo = (id: string | null) => {
+    if (id) router.push(assignmentPaths.grade(assignmentId!, id));
   };
 
-  const handleGrade = () => {
-    gradeSubmission(assignment.id, submission.id, score, feedback);
-    setMode("graded");
-    toast.success("Submission Graded", {
-      description: "This submission has been graded successfully.",
-    });
+  const handleGrade = async () => {
+    if (!assignmentId || saving) return;
+    if (!isRubric && (score < 0 || score > totalPoints)) {
+      toast.error(`Score must be between 0 and ${totalPoints}`);
+      return;
+    }
+    setSaving(true);
+    const result = await gradeSubmission(
+      assignmentId,
+      submission._id,
+      isRubric
+        ? { awardedCriterionIds: [...checked], feedback }
+        : { score, feedback },
+    );
+    if (result.success) {
+      setView((prev) => (prev ? { ...prev, submission: result.data } : prev));
+      setMode("graded");
+      toast.success("Submission Graded", {
+        description: "This submission has been graded successfully.",
+      });
+    } else {
+      toast.error(getApiErrorMessage(result, "Couldn't grade submission"));
+    }
+    setSaving(false);
   };
 
   const appendFeedback = (chip: string) => {
@@ -127,7 +215,7 @@ export default function GradeSubmissionPage() {
         <Flex justify="space-between" align="center" mb={3}>
           <Box
             as="button"
-            onClick={() => router.push(assignmentPaths.details(assignment.id))}
+            onClick={() => router.push(assignmentPaths.details(assignmentId!))}
             color="gray.500"
             cursor="pointer"
             _hover={{ color: "gray.800" }}
@@ -135,13 +223,10 @@ export default function GradeSubmissionPage() {
             <ArrowLeft size={20} />
           </Box>
           <HStack gap={3}>
-            <NavCircle onClick={() => goTo(subIndex - 1)} disabled={subIndex <= 0}>
+            <NavCircle onClick={() => goTo(prevSubmissionId)} disabled={!prevSubmissionId}>
               <ChevronLeft size={18} />
             </NavCircle>
-            <NavCircle
-              onClick={() => goTo(subIndex + 1)}
-              disabled={subIndex >= assignment.submissions.length - 1}
-            >
+            <NavCircle onClick={() => goTo(nextSubmissionId)} disabled={!nextSubmissionId}>
               <ChevronRight size={18} />
             </NavCircle>
           </HStack>
@@ -158,7 +243,7 @@ export default function GradeSubmissionPage() {
           {submission.studentName}
         </Heading>
         <Text fontSize="sm" color="gray.500" mb={6}>
-          {submission.email}
+          {submission.studentEmail}
         </Text>
 
         <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={6} alignItems="start">
@@ -170,12 +255,29 @@ export default function GradeSubmissionPage() {
                   Student submission
                 </Text>
                 <Text fontSize="sm" color="gray.400">
-                  Submitted {submission.submittedAgo}
+                  Submitted {timeAgo(submission.submittedAt)}
                 </Text>
               </Flex>
-              <Text fontSize="sm" color="gray.600" lineHeight="1.8" whiteSpace="pre-line">
-                {submission.answer}
-              </Text>
+              {submission.content ? (
+                <Text fontSize="sm" color="gray.600" lineHeight="1.8" whiteSpace="pre-line">
+                  {submission.content}
+                </Text>
+              ) : submission.url ? (
+                <Link
+                  href={submission.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  fontSize="sm"
+                  color="#2563EB"
+                  textDecoration="underline"
+                >
+                  {submission.url}
+                </Link>
+              ) : (
+                <Text fontSize="sm" color="gray.400">
+                  No written response — see attachments.
+                </Text>
+              )}
             </Box>
 
             {submission.attachments.length > 0 ? (
@@ -186,7 +288,7 @@ export default function GradeSubmissionPage() {
                 <Stack gap={0}>
                   {submission.attachments.map((att) => (
                     <Flex
-                      key={att.id}
+                      key={att.fileUrl}
                       justify="space-between"
                       align="center"
                       py={4}
@@ -197,19 +299,20 @@ export default function GradeSubmissionPage() {
                       <HStack gap={3}>
                         <FileText size={18} color="#6B7280" />
                         <Text fontSize="sm" color="gray.700">
-                          {att.name}
+                          {att.fileName}
                         </Text>
                       </HStack>
-                      <Box
-                        as="button"
+                      <Link
+                        href={att.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         fontSize="sm"
                         fontWeight="medium"
                         color="gray.900"
                         cursor="pointer"
-                        onClick={() => toast.success(`Downloading ${att.name}`)}
                       >
                         Download
-                      </Box>
+                      </Link>
                     </Flex>
                   ))}
                 </Stack>
@@ -248,6 +351,8 @@ export default function GradeSubmissionPage() {
                     value={isRubric ? score : manualScore}
                     onChange={(e) => setManualScore(Number(e.target.value) || 0)}
                     readOnly={isRubric}
+                    min={0}
+                    max={totalPoints}
                     w="64px"
                     h="64px"
                     textAlign="center"
@@ -261,7 +366,7 @@ export default function GradeSubmissionPage() {
                   />
                 )}
                 <Text fontSize="xl" color="gray.400" fontWeight="medium">
-                  /100
+                  /{totalPoints}
                 </Text>
               </HStack>
               <Text fontSize="4xl" fontWeight="bold" color={color}>
@@ -291,7 +396,7 @@ export default function GradeSubmissionPage() {
                     <Text fontWeight="semibold" color="gray.900">
                       Rubric criteria
                     </Text>
-                    {assignment.rubric.map((c) => {
+                    {grading.rubric.map((c) => {
                       const on = checked.has(c.id);
                       return (
                         <Flex
@@ -322,7 +427,7 @@ export default function GradeSubmissionPage() {
                               <Box w="20px" h="20px" rounded="full" borderWidth="1.5px" borderColor="gray.300" />
                             )}
                             <Text fontSize="sm" color="gray.800">
-                              {c.label}
+                              {c.name}
                             </Text>
                           </HStack>
                           <Text fontSize="sm" color="gray.500">
@@ -380,6 +485,8 @@ export default function GradeSubmissionPage() {
                   h="48px"
                   fontWeight="medium"
                   _hover={{ bg: "#262760" }}
+                  loading={saving}
+                  disabled={saving}
                   onClick={handleGrade}
                 >
                   Grade submission

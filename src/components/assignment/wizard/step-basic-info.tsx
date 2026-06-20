@@ -2,7 +2,7 @@
 
 import { HStack, Stack, Text } from "@chakra-ui/react";
 import { HelpCircle, Briefcase, Pencil } from "lucide-react";
-import type { AssignmentType } from "@/lib/mock/assignments";
+import type { AssignmentType } from "@/lib/api/assignments";
 import { SelectableCard } from "@/components/assignment/shared";
 import { CourseTreePicker } from "./course-tree-picker";
 import { useWizard } from "./wizard-context";

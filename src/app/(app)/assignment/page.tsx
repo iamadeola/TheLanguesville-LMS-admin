@@ -1,29 +1,54 @@
 "use client";
 
-import { Box, Flex, Grid, HStack, Stack, Text } from "@chakra-ui/react";
+import { Box, Flex, Grid, HStack, Skeleton, Stack, Text } from "@chakra-ui/react";
 import { FileText, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { SearchInput } from "@/components/dashboard/search-input";
 import { NumberCard, StatusBadge } from "@/components/assignment/shared";
 import { AppButton } from "@/components/ui/app-button";
+import { useAdmin } from "@/lib/hooks/use-admin";
 import { assignmentPaths } from "@/lib/routes";
+import { getApiErrorMessage } from "@/lib/api/client";
 import {
-  type Assignment,
+  type AssignmentListItem,
+  type AssignmentStats,
   TYPE_LABELS,
-  getStats,
+  getAssignmentStats,
   listAssignments,
-} from "@/lib/mock/assignments";
+} from "@/lib/api/assignments";
 
 type TabValue = "all" | "active" | "overdue" | "draft";
 
 const COLS = "1.6fr 1.4fr 0.9fr 1fr 0.9fr 0.7fr";
+const PAGE_SIZE = 10;
 
-function PagerButton({ label }: { label: string }) {
+function formatDue(dueAt: string | null): string {
+  if (!dueAt) return "No due date";
+  const d = new Date(dueAt);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function PagerButton({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
   return (
     <Box
       as="button"
+      onClick={disabled ? undefined : onClick}
       px={4}
       py={2}
       rounded="md"
@@ -33,8 +58,9 @@ function PagerButton({ label }: { label: string }) {
       fontSize="sm"
       fontWeight="medium"
       color="gray.700"
-      cursor="pointer"
-      _hover={{ bg: "gray.50" }}
+      opacity={disabled ? 0.5 : 1}
+      cursor={disabled ? "not-allowed" : "pointer"}
+      _hover={disabled ? undefined : { bg: "gray.50" }}
     >
       {label}
     </Box>
@@ -53,7 +79,7 @@ function AssignmentRow({
   assignment,
   onClick,
 }: {
-  assignment: Assignment;
+  assignment: AssignmentListItem;
   onClick: () => void;
 }) {
   return (
@@ -75,70 +101,123 @@ function AssignmentRow({
           {assignment.title}
         </Text>
         <Text fontSize="xs" color="gray.400">
-          {TYPE_LABELS[assignment.type]}
+          {TYPE_LABELS[assignment.type] ?? assignment.type}
         </Text>
       </Stack>
       <Text fontSize="sm" color="gray.700">
-        {assignment.courseName}
+        {assignment.course?.title ?? "—"}
+        {assignment.courseCount > 1 ? ` +${assignment.courseCount - 1}` : ""}
       </Text>
       <Text fontSize="sm" color="gray.700">
-        All ({assignment.assignedTo})
+        All ({assignment.assignedCount})
       </Text>
       <Text fontSize="sm" color="gray.700">
-        {assignment.dueDate}
+        {formatDue(assignment.dueAt)}
       </Text>
       <Box>
-        <StatusBadge status={assignment.status} />
+        <StatusBadge status={assignment.derivedStatus} />
       </Box>
       <Text fontSize="sm" color="gray.700">
-        {assignment.submissions.length}/{assignment.assignedTo}
+        {assignment.submittedCount}/{assignment.assignedCount}
       </Text>
     </Grid>
   );
 }
 
+function RowSkeleton() {
+  return (
+    <Grid templateColumns={COLS} gap={4} px={5} py={4} borderTopWidth="1px" borderColor="gray.100">
+      <Stack gap={1.5}>
+        <Skeleton h="14px" w="70%" rounded="md" />
+        <Skeleton h="10px" w="40%" rounded="md" />
+      </Stack>
+      <Skeleton h="14px" w="70%" rounded="md" />
+      <Skeleton h="14px" w="50%" rounded="md" />
+      <Skeleton h="14px" w="60%" rounded="md" />
+      <Skeleton h="20px" w="64px" rounded="full" />
+      <Skeleton h="14px" w="40%" rounded="md" />
+    </Grid>
+  );
+}
+
+const TABS: { value: TabValue; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "active", label: "Active" },
+  { value: "overdue", label: "Overdue" },
+  { value: "draft", label: "Draft" },
+];
+
 export default function AssignmentListPage() {
   const router = useRouter();
+  const { admin, loading: adminLoading } = useAdmin();
   const [activeTab, setActiveTab] = useState<TabValue>("all");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
-  const all = listAssignments();
-  const stats = getStats();
+  const [stats, setStats] = useState<AssignmentStats | null>(null);
+  const [items, setItems] = useState<AssignmentListItem[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+  /** Distinguishes "no results for this filter" from "no assignments at all". */
+  const [hasAny, setHasAny] = useState(true);
 
-  const visible = all.filter((a) => {
-    const matchesTab =
-      activeTab === "all" ? a.status !== "draft" : a.status === activeTab;
-    const matchesSearch = a.title.toLowerCase().includes(search.toLowerCase());
-    return matchesTab && matchesSearch;
-  });
+  const fetchStats = useCallback(async () => {
+    const result = await getAssignmentStats();
+    if (result.success) {
+      setStats(result.data);
+      setHasAny(
+        result.data.active + result.data.overdue + result.data.drafts > 0,
+      );
+    }
+  }, []);
 
-  const tabs: { value: TabValue; label: string; count?: number }[] = [
-    {
-      value: "all",
-      label: "All",
-      count: all.filter((a) => a.status !== "draft").length,
-    },
-    { value: "active", label: "Active" },
-    { value: "overdue", label: "Overdue" },
-    { value: "draft", label: "Draft" },
-  ];
+  const fetchList = useCallback(async () => {
+    setLoading(true);
+    const result = await listAssignments({
+      filter: activeTab,
+      search: search || undefined,
+      page,
+      limit: PAGE_SIZE,
+    });
+    if (result.success) {
+      setItems(result.data.assignments);
+      setTotalPages(result.data.totalPages || 1);
+    } else {
+      toast.error(getApiErrorMessage(result, "Couldn't load assignments"));
+      setItems([]);
+    }
+    setLoading(false);
+  }, [activeTab, search, page]);
+
+  useEffect(() => {
+    const id = setTimeout(fetchStats, 0);
+    return () => clearTimeout(id);
+  }, [fetchStats]);
+
+  useEffect(() => {
+    const id = setTimeout(fetchList, search ? 300 : 0);
+    return () => clearTimeout(id);
+  }, [fetchList, search]);
 
   const statCards: { label: string; value: number }[] = [
-    { label: "Active", value: stats.active },
-    { label: "Overdue", value: stats.overdue },
-    { label: "Drafts", value: stats.drafts },
-    { label: "Submission", value: stats.submissions },
+    { label: "Active", value: stats?.active ?? 0 },
+    { label: "Overdue", value: stats?.overdue ?? 0 },
+    { label: "Drafts", value: stats?.drafts ?? 0 },
+    { label: "Submission", value: stats?.submissions ?? 0 },
   ];
 
-  // Fully empty state (no assignments at all).
-  if (all.length === 0) {
+  const userChip = admin
+    ? {
+        name: `${admin.firstName} ${admin.lastName}`.trim(),
+        role: admin.role === "superadmin" ? "Super Admin" : "Admin",
+      }
+    : undefined;
+
+  // Fully empty state (no assignments at all, no active search/filter).
+  if (!loading && !hasAny && !search && activeTab === "all" && items.length === 0) {
     return (
       <Box>
-        <DashboardHeader
-          title="Assignment"
-          notificationCount={1}
-          user={{ name: "John Doe", role: "Instructor" }}
-        />
+        <DashboardHeader title="Assignment" notificationCount={1} loading={adminLoading} user={userChip} />
         <Flex direction="column" align="center" justify="center" py="160px" gap={4}>
           <Box color="gray.300">
             <FileText size={44} />
@@ -165,11 +244,7 @@ export default function AssignmentListPage() {
 
   return (
     <Box>
-      <DashboardHeader
-        title="Assignment"
-        notificationCount={1}
-        user={{ name: "John Doe", role: "Instructor" }}
-      />
+      <DashboardHeader title="Assignment" notificationCount={1} loading={adminLoading} user={userChip} />
 
       <Box px={8} py={6}>
         <Stack gap={6}>
@@ -183,41 +258,27 @@ export default function AssignmentListPage() {
           {/* Tabs */}
           <Box borderBottomWidth="1px" borderColor="gray.200">
             <HStack gap={6}>
-              {tabs.map((tab) => {
+              {TABS.map((tab) => {
                 const active = tab.value === activeTab;
                 return (
                   <Box
                     key={tab.value}
-                    onClick={() => setActiveTab(tab.value)}
+                    onClick={() => {
+                      setActiveTab(tab.value);
+                      setPage(1);
+                    }}
                     pb={3}
                     borderBottomWidth="2px"
                     borderColor={active ? "#2E2F6F" : "transparent"}
                     cursor="pointer"
                   >
-                    <HStack gap={2}>
-                      <Text
-                        fontSize="sm"
-                        fontWeight={active ? "semibold" : "medium"}
-                        color={active ? "#2E2F6F" : "gray.500"}
-                      >
-                        {tab.label}
-                      </Text>
-                      {tab.count != null ? (
-                        <Box
-                          bg={active ? "#E8E9F5" : "gray.100"}
-                          color={active ? "#2E2F6F" : "gray.500"}
-                          fontSize="xs"
-                          fontWeight="semibold"
-                          rounded="full"
-                          px={2}
-                          py={0.5}
-                          minW="20px"
-                          textAlign="center"
-                        >
-                          {tab.count}
-                        </Box>
-                      ) : null}
-                    </HStack>
+                    <Text
+                      fontSize="sm"
+                      fontWeight={active ? "semibold" : "medium"}
+                      color={active ? "#2E2F6F" : "gray.500"}
+                    >
+                      {tab.label}
+                    </Text>
                   </Box>
                 );
               })}
@@ -229,7 +290,10 @@ export default function AssignmentListPage() {
             <SearchInput
               placeholder="Search assignments"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
             />
             <AppButton
               w="auto"
@@ -261,7 +325,9 @@ export default function AssignmentListPage() {
               <HeaderCell>Submitted</HeaderCell>
             </Grid>
 
-            {visible.length === 0 ? (
+            {loading ? (
+              [...Array(5)].map((_, i) => <RowSkeleton key={i} />)
+            ) : items.length === 0 ? (
               <Flex
                 direction="column"
                 align="center"
@@ -281,7 +347,7 @@ export default function AssignmentListPage() {
                 </Text>
               </Flex>
             ) : (
-              visible.map((a) => (
+              items.map((a) => (
                 <AssignmentRow
                   key={a.id}
                   assignment={a}
@@ -292,15 +358,25 @@ export default function AssignmentListPage() {
           </Box>
 
           {/* Pagination */}
-          <Flex justify="space-between" align="center">
-            <Text fontSize="sm" color="gray.500">
-              Page 1 of 10
-            </Text>
-            <HStack gap={2}>
-              <PagerButton label="Previous" />
-              <PagerButton label="Next" />
-            </HStack>
-          </Flex>
+          {items.length > 0 ? (
+            <Flex justify="space-between" align="center">
+              <Text fontSize="sm" color="gray.500">
+                Page {page} of {totalPages}
+              </Text>
+              <HStack gap={2}>
+                <PagerButton
+                  label="Previous"
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                />
+                <PagerButton
+                  label="Next"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                />
+              </HStack>
+            </Flex>
+          ) : null}
         </Stack>
       </Box>
     </Box>

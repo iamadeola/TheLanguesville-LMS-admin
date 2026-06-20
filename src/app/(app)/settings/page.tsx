@@ -6,6 +6,7 @@ import { DashboardHeader } from "@/components/dashboard/dashboard-header";
 import { NotificationsTab } from "@/components/settings/notifications-tab";
 import { ProfileTab } from "@/components/settings/profile-tab";
 import { SecurityTab } from "@/components/settings/security-tab";
+import { useAdmin } from "@/lib/hooks/use-admin";
 
 type Tab = "profile" | "notifications" | "security";
 
@@ -17,13 +18,22 @@ const TABS: { value: Tab; label: string }[] = [
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("profile");
+  const { admin, loading: adminLoading } = useAdmin();
 
   return (
     <Box>
       <DashboardHeader
         title="Settings"
         notificationCount={1}
-        user={{ name: "John Doe", role: "Instructor" }}
+        loading={adminLoading}
+        user={
+          admin
+            ? {
+                name: `${admin.firstName} ${admin.lastName}`.trim(),
+                role: admin.role === "superadmin" ? "Super Admin" : "Admin",
+              }
+            : undefined
+        }
       />
 
       <Box px={8} py={6}>
