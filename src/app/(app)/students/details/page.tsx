@@ -9,36 +9,129 @@ import {
   Heading,
   Input,
   Portal,
+  Skeleton,
   Stack,
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { Award, ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  type LucideIcon,
+  Mail,
+  Medal,
+  Star,
+  Trophy,
+  Upload,
+  X,
+} from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { NumberCard, PageTopBar } from "@/components/assignment/shared";
 import { Avatar } from "@/components/shared/avatar";
+import { getApiErrorMessage } from "@/lib/api/client";
+import {
+  type ActivityItem,
+  type ActivityType,
+  type GradeItem,
+  type StudentDetail,
+  getStudentDetail,
+  listStudentActivity,
+  listStudentGrades,
+  relativeTime,
+  sendStudentMessage,
+} from "@/lib/api/students";
 import { studentPaths } from "@/lib/routes";
-import { getStudent, type ActivityType, type Student } from "@/lib/mock/students";
 
 const LEVEL_BADGE = { bg: "#EEF0FB", color: "#4338CA" };
+const GRADES_PAGE_SIZE = 10;
+const ACTIVITY_PAGE_SIZE = 5;
 
-function activityIcon(type: ActivityType) {
-  if (type === "joined") return CalendarDays;
-  return Award;
+function activityIcon(type: ActivityType): LucideIcon {
+  switch (type) {
+    case "lesson_completed":
+      return Medal;
+    case "milestone":
+      return Trophy;
+    case "joined_course":
+      return CalendarDays;
+    case "assignment_submitted":
+      return Upload;
+    case "grade_received":
+      return Star;
+    case "message_received":
+      return Mail;
+    default:
+      return Bell;
+  }
 }
 
-function SendMessageModal({ student, onClose }: { student: Student; onClose: () => void }) {
+function GradeRow({ grade }: { grade: GradeItem }) {
+  return (
+    <Flex justify="space-between" align="center" py={4} borderBottomWidth="1px" borderColor="gray.100" _last={{ borderBottomWidth: 0, pb: 0 }}>
+      <Stack gap={0}>
+        <Text fontSize="sm" fontWeight="medium" color="gray.900">
+          {grade.title}
+        </Text>
+        <Text fontSize="xs" color="gray.500">
+          {grade.course ?? "—"}
+        </Text>
+      </Stack>
+      <Text fontSize="sm" color="gray.900">
+        <Text as="span" fontWeight="bold">
+          {grade.score ?? "—"}
+        </Text>
+        <Text as="span" color="gray.400">
+          /{grade.totalPoints}
+        </Text>
+      </Text>
+    </Flex>
+  );
+}
+
+function SendMessageModal({
+  studentId,
+  name,
+  email,
+  avatarUrl,
+  studentInitials,
+  onClose,
+}: {
+  studentId: string;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+  studentInitials: string;
+  onClose: () => void;
+}) {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const canSend = subject.trim() !== "" && message.trim() !== "";
+  const [sending, setSending] = useState(false);
+  const canSend =
+    !sending && subject.trim() !== "" && message.trim() !== "";
 
-  const send = () => {
-    onClose();
-    toast.success("Message Delivered", {
-      description: "Your message has been delivered successfully.",
+  const send = async () => {
+    if (!canSend) return;
+    setSending(true);
+    const result = await sendStudentMessage(studentId, {
+      subject: subject.trim(),
+      body: message.trim(),
     });
+    if (result.success) {
+      onClose();
+      toast.success("Message Delivered", {
+        description:
+          result.message ?? "Your message has been delivered successfully.",
+      });
+    } else {
+      setSending(false);
+      toast.error(getApiErrorMessage(result, "Couldn't send the message"));
+    }
   };
 
   return (
@@ -46,13 +139,13 @@ function SendMessageModal({ student, onClose }: { student: Student; onClose: () 
       <Box position="fixed" inset={0} bg="blackAlpha.600" zIndex={200} display="flex" alignItems="center" justifyContent="center" px={4} onClick={onClose}>
         <Box bg="white" rounded="2xl" p={7} w="full" maxW="460px" boxShadow="2xl" onClick={(e) => e.stopPropagation()}>
           <HStack gap={3} mb={5}>
-            <Avatar name={student.name} size={44} />
+            <Avatar name={name} src={avatarUrl} initials={studentInitials} size={44} />
             <Stack gap={0}>
               <Text fontWeight="bold" color="gray.900">
-                {student.name}
+                {name}
               </Text>
               <Text fontSize="sm" color="gray.500">
-                {student.email}
+                {email}
               </Text>
             </Stack>
           </HStack>
@@ -62,20 +155,20 @@ function SendMessageModal({ student, onClose }: { student: Student; onClose: () 
               <Text fontSize="sm" color="gray.700" mb={2}>
                 Subject
               </Text>
-              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="A clear, short subject line" h="48px" fontSize="sm" borderColor="gray.200" rounded="lg" _placeholder={{ color: "gray.400" }} _focus={{ borderColor: "#2E2F6F", outline: "none", boxShadow: "none" }} />
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} placeholder="A clear, short subject line" h="48px" fontSize="sm" borderColor="gray.200" rounded="lg" _placeholder={{ color: "gray.400" }} _focus={{ borderColor: "#2E2F6F", outline: "none", boxShadow: "none" }} />
             </Stack>
             <Stack gap={0}>
               <Text fontSize="sm" color="gray.700" mb={2}>
                 Message
               </Text>
-              <Textarea value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Write your message" minH="130px" resize="none" fontSize="sm" borderColor="gray.200" rounded="lg" _placeholder={{ color: "gray.400" }} _focus={{ borderColor: "#2E2F6F", outline: "none", boxShadow: "none" }} />
+              <Textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={2000} placeholder="Write your message" minH="130px" resize="none" fontSize="sm" borderColor="gray.200" rounded="lg" _placeholder={{ color: "gray.400" }} _focus={{ borderColor: "#2E2F6F", outline: "none", boxShadow: "none" }} />
               <Text fontSize="xs" color="gray.400" textAlign="right" mt={1.5}>
-                {message.length}/200
+                {message.length}/2000
               </Text>
             </Stack>
 
             <Stack gap={3}>
-              <Button rounded="full" h="48px" fontSize="sm" fontWeight="semibold" bg={canSend ? "#2E2F6F" : "#E5E7EB"} color={canSend ? "white" : "#9CA3AF"} _hover={canSend ? { bg: "#262760" } : { bg: "#E5E7EB" }} cursor={canSend ? "pointer" : "not-allowed"} disabled={!canSend} onClick={send}>
+              <Button rounded="full" h="48px" fontSize="sm" fontWeight="semibold" bg={canSend ? "#2E2F6F" : "#E5E7EB"} color={canSend ? "white" : "#9CA3AF"} _hover={canSend ? { bg: "#262760" } : { bg: "#E5E7EB" }} cursor={canSend ? "pointer" : "not-allowed"} disabled={!canSend} loading={sending} onClick={send}>
                 Send message
               </Button>
               <Button variant="outline" rounded="full" h="48px" fontSize="sm" fontWeight="medium" onClick={onClose}>
@@ -83,6 +176,97 @@ function SendMessageModal({ student, onClose }: { student: Student; onClose: () 
               </Button>
             </Stack>
           </Stack>
+        </Box>
+      </Box>
+    </Portal>
+  );
+}
+
+function AllGradesModal({
+  studentId,
+  onClose,
+}: {
+  studentId: string;
+  onClose: () => void;
+}) {
+  const [grades, setGrades] = useState<GradeItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      setLoading(true);
+      const result = await listStudentGrades(studentId, {
+        page,
+        limit: GRADES_PAGE_SIZE,
+      });
+      if (!active) return;
+      if (result.success) {
+        setGrades(result.data.grades);
+        setTotalPages(result.data.totalPages || 1);
+      } else {
+        toast.error(getApiErrorMessage(result, "Couldn't load grades"));
+      }
+      setLoading(false);
+    };
+    const id = setTimeout(run, 0);
+    return () => {
+      active = false;
+      clearTimeout(id);
+    };
+  }, [studentId, page]);
+
+  return (
+    <Portal>
+      <Box position="fixed" inset={0} bg="blackAlpha.600" zIndex={200} display="flex" alignItems="center" justifyContent="center" px={4} onClick={onClose}>
+        <Box bg="white" rounded="2xl" w="full" maxW="560px" boxShadow="2xl" onClick={(e) => e.stopPropagation()} overflow="hidden">
+          <Flex justify="space-between" align="center" px={7} pt={6} pb={4}>
+            <Heading as="h3" size="md" color="gray.900">
+              All Grades
+            </Heading>
+            <Flex as="button" onClick={onClose} w="32px" h="32px" rounded="full" borderWidth="1px" borderColor="gray.200" align="center" justify="center" color="gray.500" cursor="pointer" _hover={{ bg: "gray.50" }}>
+              <X size={16} />
+            </Flex>
+          </Flex>
+
+          <Box px={7} pb={2} maxH="420px" overflowY="auto">
+            {loading ? (
+              <Stack gap={4} py={2}>
+                {[...Array(4)].map((_, i) => (
+                  <Skeleton key={i} h="40px" rounded="md" />
+                ))}
+              </Stack>
+            ) : grades.length === 0 ? (
+              <Flex direction="column" align="center" justify="center" py="50px" gap={2} color="gray.400">
+                <FileText size={28} />
+                <Text fontSize="sm">No grades yet</Text>
+              </Flex>
+            ) : (
+              <Stack gap={0}>
+                {grades.map((g) => (
+                  <GradeRow key={g.id} grade={g} />
+                ))}
+              </Stack>
+            )}
+          </Box>
+
+          {totalPages > 1 ? (
+            <Flex justify="space-between" align="center" px={7} py={4} borderTopWidth="1px" borderColor="gray.100">
+              <Text fontSize="sm" color="gray.500">
+                Page {page} of {totalPages}
+              </Text>
+              <HStack gap={2}>
+                <Box as="button" onClick={page <= 1 ? undefined : () => setPage((p) => p - 1)} px={4} py={2} rounded="md" borderWidth="1px" borderColor="gray.200" bg="white" fontSize="sm" fontWeight="medium" color="gray.700" opacity={page <= 1 ? 0.5 : 1} cursor={page <= 1 ? "not-allowed" : "pointer"} _hover={page <= 1 ? undefined : { bg: "gray.50" }}>
+                  Previous
+                </Box>
+                <Box as="button" onClick={page >= totalPages ? undefined : () => setPage((p) => p + 1)} px={4} py={2} rounded="md" borderWidth="1px" borderColor="gray.200" bg="white" fontSize="sm" fontWeight="medium" color="gray.700" opacity={page >= totalPages ? 0.5 : 1} cursor={page >= totalPages ? "not-allowed" : "pointer"} _hover={page >= totalPages ? undefined : { bg: "gray.50" }}>
+                  Next
+                </Box>
+              </HStack>
+            </Flex>
+          ) : null}
         </Box>
       </Box>
     </Portal>
@@ -101,19 +285,122 @@ function EmptyCard({ title, subtitle }: { title: string; subtitle: string }) {
   );
 }
 
+function DetailSkeleton() {
+  return (
+    <Box px={8} pt={2}>
+      <Skeleton h="20px" w="180px" rounded="md" mb={6} />
+      <HStack gap={4} mb={8}>
+        <Skeleton w="56px" h="56px" rounded="full" />
+        <Stack gap={2}>
+          <Skeleton h="24px" w="220px" rounded="md" />
+          <Skeleton h="14px" w="280px" rounded="md" />
+        </Stack>
+      </HStack>
+      <HStack gap={5} mb={6} align="stretch">
+        {[...Array(4)].map((_, i) => (
+          <Skeleton key={i} h="110px" flex="1" rounded="xl" />
+        ))}
+      </HStack>
+      <Skeleton h="240px" rounded="xl" mb={6} />
+      <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={6}>
+        <Skeleton h="260px" rounded="xl" />
+        <Skeleton h="260px" rounded="xl" />
+      </Grid>
+    </Box>
+  );
+}
+
 export default function StudentDetailPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const student = getStudent(params.get("studentId"));
-  const [messageOpen, setMessageOpen] = useState(false);
+  const studentId = params.get("studentId");
 
-  if (!student) {
+  const [detail, setDetail] = useState<StudentDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [messageOpen, setMessageOpen] = useState(false);
+  const [gradesOpen, setGradesOpen] = useState(false);
+
+  const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [activityPage, setActivityPage] = useState(1);
+  const [activityTotalPages, setActivityTotalPages] = useState(1);
+  const [activityLoading, setActivityLoading] = useState(false);
+
+  // Horizontal scroller for the enrolled-courses carousel arrows.
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const scrollCarousel = (dir: -1 | 1) => {
+    carouselRef.current?.scrollBy({ left: dir * 360, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      if (!studentId) {
+        setError("Student not found");
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      const result = await getStudentDetail(studentId);
+      if (!active) return;
+      if (result.success) {
+        setDetail(result.data);
+        setActivity(result.data.recentActivity);
+        // The detail payload is page 1 of the activity feed (limit 5).
+        setActivityPage(1);
+        setActivityTotalPages(
+          result.data.recentActivity.length < ACTIVITY_PAGE_SIZE ? 1 : 2,
+        );
+      } else {
+        setError(getApiErrorMessage(result, "Couldn't load this student"));
+      }
+      setLoading(false);
+    };
+    const id = setTimeout(run, 0);
+    return () => {
+      active = false;
+      clearTimeout(id);
+    };
+  }, [studentId]);
+
+  const loadMoreActivity = useCallback(async () => {
+    if (!studentId) return;
+    const next = activityPage + 1;
+    setActivityLoading(true);
+    const result = await listStudentActivity(studentId, {
+      page: next,
+      limit: ACTIVITY_PAGE_SIZE,
+    });
+    if (result.success) {
+      setActivity((prev) => {
+        const seen = new Set(prev.map((a) => a.id));
+        return [...prev, ...result.data.activities.filter((a) => !seen.has(a.id))];
+      });
+      setActivityPage(next);
+      setActivityTotalPages(result.data.totalPages || next);
+    } else {
+      toast.error(getApiErrorMessage(result, "Couldn't load more activity"));
+    }
+    setActivityLoading(false);
+  }, [studentId, activityPage]);
+
+  if (loading) {
+    return (
+      <Box pb={10}>
+        <PageTopBar />
+        <DetailSkeleton />
+      </Box>
+    );
+  }
+
+  if (error || !detail) {
     return (
       <Box>
         <PageTopBar />
         <Flex direction="column" align="center" justify="center" py="160px" gap={3}>
           <Text fontWeight="semibold" color="gray.900">
-            Student not found
+            {error ?? "Student not found"}
           </Text>
           <Button variant="outline" rounded="full" onClick={() => router.push(studentPaths.list)}>
             Back to students
@@ -122,6 +409,9 @@ export default function StudentDetailPage() {
       </Box>
     );
   }
+
+  const { student, stats, enrolledCourses, recentGrades } = detail;
+  const lastActive = relativeTime(student.lastActiveAt);
 
   return (
     <Box pb={10}>
@@ -148,25 +438,29 @@ export default function StudentDetailPage() {
         </Flex>
 
         <HStack gap={4} mb={8}>
-          <Avatar name={student.name} size={56} />
+          <Avatar name={student.name} src={student.avatarUrl} initials={student.initials} size={56} />
           <Stack gap={1}>
             <Heading as="h1" size="xl" color="gray.900">
               {student.name}
             </Heading>
             <HStack gap={2} fontSize="sm" color="gray.500">
               <Text>{student.email}</Text>
-              <Text>•</Text>
-              <Text>Last active {student.lastActive}</Text>
+              {lastActive ? (
+                <>
+                  <Text>•</Text>
+                  <Text>Last active {lastActive}</Text>
+                </>
+              ) : null}
             </HStack>
           </Stack>
         </HStack>
 
         {/* Stat cards */}
         <HStack gap={5} align="stretch" mb={6}>
-          <NumberCard label="Overall Progress" value={`${student.overallProgress}%`} />
-          <NumberCard label="Avg. Grade" value={student.avgGrade} />
-          <NumberCard label="Courses" value={student.coursesCount} />
-          <NumberCard label="Day Streak" value={student.dayStreak} />
+          <NumberCard label="Overall Progress" value={`${stats.overallProgress}%`} />
+          <NumberCard label="Avg. Grade" value={stats.avgGrade ?? "—"} />
+          <NumberCard label="Courses" value={stats.coursesCount} />
+          <NumberCard label="Day Streak" value={stats.dayStreak} />
         </HStack>
 
         {/* Enrolled courses */}
@@ -175,20 +469,22 @@ export default function StudentDetailPage() {
             <Heading as="h2" size="md" color="gray.900">
               Enrolled Courses
             </Heading>
-            <HStack gap={3}>
-              {[ChevronLeft, ChevronRight].map((Icon, i) => (
-                <Flex key={i} w="36px" h="36px" rounded="full" borderWidth="1px" borderColor="gray.200" align="center" justify="center" color="gray.500" cursor="pointer" _hover={{ bg: "gray.50" }}>
-                  <Icon size={16} />
-                </Flex>
-              ))}
-            </HStack>
+            {enrolledCourses.length > 0 ? (
+              <HStack gap={3}>
+                {([ChevronLeft, ChevronRight] as const).map((Icon, i) => (
+                  <Flex key={i} as="button" onClick={() => scrollCarousel(i === 0 ? -1 : 1)} w="36px" h="36px" rounded="full" borderWidth="1px" borderColor="gray.200" align="center" justify="center" color="gray.500" cursor="pointer" _hover={{ bg: "gray.50" }}>
+                    <Icon size={16} />
+                  </Flex>
+                ))}
+              </HStack>
+            ) : null}
           </Flex>
-          {student.enrolledCourses.length === 0 ? (
+          {enrolledCourses.length === 0 ? (
             <EmptyCard title="No enrolled courses yet" subtitle="Courses this student enrolled in will appear here" />
           ) : (
-            <Grid templateColumns={{ base: "1fr", md: "1fr 1fr" }} gap={5}>
-              {student.enrolledCourses.map((c) => (
-                <Box key={c.id} borderWidth="1px" borderColor="gray.200" rounded="xl" p={5}>
+            <Grid ref={carouselRef} templateColumns="repeat(auto-fill, minmax(0, 1fr))" gridAutoFlow="column" gridAutoColumns={{ base: "minmax(280px, 1fr)", md: "minmax(0, calc(50% - 10px))" }} gap={5} overflowX="auto" scrollSnapType="x mandatory" css={{ "&::-webkit-scrollbar": { display: "none" } }}>
+              {enrolledCourses.map((c) => (
+                <Box key={c.enrollmentId} borderWidth="1px" borderColor="gray.200" rounded="xl" p={5} scrollSnapAlign="start">
                   <Box display="inline-block" bg={LEVEL_BADGE.bg} color={LEVEL_BADGE.color} fontSize="xs" fontWeight="semibold" px={2.5} py={1} rounded="full" mb={3}>
                     {c.level}
                   </Box>
@@ -199,7 +495,7 @@ export default function StudentDetailPage() {
                     {c.description}
                   </Text>
                   <Text fontSize="xs" color="gray.400" mb={3}>
-                    {c.modules} modules • {c.lessons} lessons • {c.duration}
+                    {c.moduleCount} modules • {c.lessonCount} lessons • {c.duration}
                   </Text>
                   <HStack gap={3}>
                     <Box flex="1" bg="gray.100" rounded="full" h="6px">
@@ -222,35 +518,18 @@ export default function StudentDetailPage() {
               <Heading as="h3" size="md" color="gray.900">
                 Recent Grades
               </Heading>
-              {student.recentGrades.length > 0 ? (
-                <Box as="button" fontSize="sm" color="#4338CA" fontWeight="medium" cursor="pointer" onClick={() => toast("Opening all grades…")}>
+              {recentGrades.length > 0 ? (
+                <Box as="button" fontSize="sm" color="#4338CA" fontWeight="medium" cursor="pointer" onClick={() => setGradesOpen(true)}>
                   View All
                 </Box>
               ) : null}
             </Flex>
-            {student.recentGrades.length === 0 ? (
+            {recentGrades.length === 0 ? (
               <EmptyCard title="No grades yet" subtitle="Graded submissions will appear here" />
             ) : (
               <Stack gap={0}>
-                {student.recentGrades.map((g) => (
-                  <Flex key={g.id} justify="space-between" align="center" py={4} borderBottomWidth="1px" borderColor="gray.100" _last={{ borderBottomWidth: 0, pb: 0 }}>
-                    <Stack gap={0}>
-                      <Text fontSize="sm" fontWeight="medium" color="gray.900">
-                        {g.title}
-                      </Text>
-                      <Text fontSize="xs" color="gray.500">
-                        {g.course}
-                      </Text>
-                    </Stack>
-                    <Text fontSize="sm" color="gray.900">
-                      <Text as="span" fontWeight="bold">
-                        {g.score}
-                      </Text>
-                      <Text as="span" color="gray.400">
-                        /100
-                      </Text>
-                    </Text>
-                  </Flex>
+                {recentGrades.slice(0, 3).map((g) => (
+                  <GradeRow key={g.id} grade={g} />
                 ))}
               </Stack>
             )}
@@ -260,11 +539,11 @@ export default function StudentDetailPage() {
             <Heading as="h3" size="md" color="gray.900" mb={4}>
               Recent Activity
             </Heading>
-            {student.activity.length === 0 ? (
+            {activity.length === 0 ? (
               <EmptyCard title="No activities yet" subtitle="Recent activities as they come in will appear here" />
             ) : (
               <Stack gap={5}>
-                {student.activity.map((a) => {
+                {activity.map((a) => {
                   const Icon = activityIcon(a.type);
                   return (
                     <HStack key={a.id} gap={3} align="flex-start">
@@ -273,22 +552,39 @@ export default function StudentDetailPage() {
                       </Flex>
                       <Stack gap={0}>
                         <Text fontSize="sm" color="gray.900">
-                          {a.text}
+                          {a.description}
                         </Text>
                         <Text fontSize="xs" color="gray.400">
-                          {a.time}
+                          {relativeTime(a.occurredAt)}
                         </Text>
                       </Stack>
                     </HStack>
                   );
                 })}
+                {activityPage < activityTotalPages ? (
+                  <Box as="button" alignSelf="flex-start" fontSize="sm" color="#4338CA" fontWeight="medium" cursor={activityLoading ? "default" : "pointer"} opacity={activityLoading ? 0.6 : 1} onClick={activityLoading ? undefined : loadMoreActivity}>
+                    {activityLoading ? "Loading…" : "Load more"}
+                  </Box>
+                ) : null}
               </Stack>
             )}
           </Box>
         </Grid>
       </Box>
 
-      {messageOpen ? <SendMessageModal student={student} onClose={() => setMessageOpen(false)} /> : null}
+      {messageOpen ? (
+        <SendMessageModal
+          studentId={student.id}
+          name={student.name}
+          email={student.email}
+          avatarUrl={student.avatarUrl}
+          studentInitials={student.initials}
+          onClose={() => setMessageOpen(false)}
+        />
+      ) : null}
+      {gradesOpen ? (
+        <AllGradesModal studentId={student.id} onClose={() => setGradesOpen(false)} />
+      ) : null}
     </Box>
   );
 }

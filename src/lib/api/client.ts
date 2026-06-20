@@ -48,7 +48,6 @@ export async function apiClient<T>(
 
   try {
     const response = await fetch(url, { ...options, headers });
-    const data = (await response.json()) as ApiResult<T>;
 
     // A 401 on a request we authenticated means the token is missing/expired:
     // drop the stale session and bounce to login. Auth endpoints (login,
@@ -61,7 +60,19 @@ export async function apiClient<T>(
       }
     }
 
-    return data;
+    // The contract guarantees a JSON envelope, but a misrouted request or an
+    // upstream proxy can return HTML (e.g. an Express "Cannot GET" 404 or a
+    // 502 page). Parse defensively so callers surface a clean message instead
+    // of a raw "Unexpected token '<'" SyntaxError.
+    const raw = await response.text();
+    try {
+      return JSON.parse(raw) as ApiResult<T>;
+    } catch {
+      const status = [response.status, response.statusText]
+        .filter(Boolean)
+        .join(" ");
+      return { success: false, message: `Request failed (${status})` };
+    }
   } catch (error) {
     return {
       success: false,
