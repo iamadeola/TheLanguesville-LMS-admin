@@ -30,8 +30,12 @@ export interface FileBlock {
   fileName?: string;
   fileSize?: number;
   mimeType?: string;
-  /** Local data URL used for an instant preview before/while uploading. */
-  dataUrl?: string;
+  /**
+   * Local blob object URL (`URL.createObjectURL`) used for an instant preview
+   * before/while uploading. A blob URL is used rather than a base64 data URL
+   * because Chrome refuses to render `data:` PDFs inside an <iframe>.
+   */
+  previewUrl?: string;
   /** Backend URL of the uploaded file, persisted with the block. */
   fileUrl?: string;
 }

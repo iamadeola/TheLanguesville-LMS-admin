@@ -47,17 +47,18 @@ export function FileBlock({ block, onChange }: FileBlockProps) {
       return;
     }
 
-    // Show an instant local preview (data URL) while the upload runs.
-    const reader = new FileReader();
-    reader.onload = () => {
-      onChange({
-        fileName: file.name,
-        fileSize: file.size,
-        mimeType: file.type,
-        dataUrl: typeof reader.result === "string" ? reader.result : undefined,
-      });
-    };
-    reader.readAsDataURL(file);
+    // Show an instant local preview while the upload runs. We use a blob object
+    // URL (not a base64 data URL) because Chrome blocks `data:` PDFs inside an
+    // <iframe>, whereas a `blob:` URL renders fine. Revoke any previous one so
+    // we don't leak object URLs when replacing a file.
+    if (block.previewUrl) URL.revokeObjectURL(block.previewUrl);
+    const previewUrl = URL.createObjectURL(file);
+    onChange({
+      fileName: file.name,
+      fileSize: file.size,
+      mimeType: file.type,
+      previewUrl,
+    });
 
     // Upload the raw bytes so the file is stored server-side and gets a stable
     // URL other devices can load. `fileUrl` is what we persist with the block.
@@ -93,11 +94,12 @@ export function FileBlock({ block, onChange }: FileBlockProps) {
   };
 
   const clear = () => {
+    if (block.previewUrl) URL.revokeObjectURL(block.previewUrl);
     onChange({
       fileName: undefined,
       fileSize: undefined,
       mimeType: undefined,
-      dataUrl: undefined,
+      previewUrl: undefined,
       fileUrl: undefined,
     });
   };
@@ -225,9 +227,10 @@ function FilePreview({ block }: { block: FileBlockModel }) {
   const mime = block.mimeType ?? "";
   const isImage = mime.startsWith("image/");
   const isPdf = mime === "application/pdf";
-  // Prefer the instant local data URL; fall back to the stored backend URL
-  // (e.g. when re-opening an existing course in the edit flow).
-  const src = block.dataUrl ?? block.fileUrl;
+  // Prefer the instant local blob URL (works for both <img> and <iframe>, even
+  // for PDFs) and fall back to the stored backend URL when re-opening a saved
+  // course where no local file is in hand.
+  const src = block.previewUrl ?? block.fileUrl;
 
   if (isImage && src) {
     return (

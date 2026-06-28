@@ -4,7 +4,7 @@ import { Box, Heading, Input, Stack, Text, Textarea } from "@chakra-ui/react";
 import { useCourseBuilder } from "./course-builder-context";
 import { LevelRadioCards } from "./level-radio-cards";
 
-const DESCRIPTION_MAX = 100;
+const DESCRIPTION_MAX = 500;
 
 const inputStyle = {
   h: "44px",
