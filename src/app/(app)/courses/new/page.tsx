@@ -17,7 +17,7 @@ import {
 import { ReviewStep } from "@/components/course-builder/review-step";
 import type { ApiResult } from "@/lib/api/client";
 import type { CourseSummary } from "@/lib/api/courses";
-import { publishCourse } from "@/lib/api/courses";
+import { publishCourse, updateCourse } from "@/lib/api/courses";
 import { apiClient, getApiErrorMessage } from "@/lib/api/client";
 
 function NewCourseFlow() {
@@ -40,6 +40,30 @@ function NewCourseFlow() {
 
   const handleProceedFromSetup = async () => {
     setCreating(true);
+
+    // If we've already created the course (e.g. the user stepped back to Course
+    // Setup to tweak the price/duration), update it in place instead of POSTing
+    // a brand-new course. Recreating would both duplicate the course and wipe
+    // the modules/lessons already added in the curriculum step.
+    if (courseId) {
+      const result = await updateCourse(courseId, {
+        title: draft.title,
+        description: draft.description,
+        level: draft.level ?? undefined,
+        price: parseFloat(draft.price) || 0,
+        duration: draft.duration,
+      });
+      if (result.success) {
+        setStep(2);
+      } else {
+        toast.error(
+          result.message || "Failed to save changes. Please try again.",
+        );
+      }
+      setCreating(false);
+      return;
+    }
+
     const result = (await apiClient<
       CourseSummary & {
         modules?: { _id: string; title: string; lessons: [] }[];

@@ -308,6 +308,14 @@ export async function saveLessonBlocks(
   lesson: Lesson,
 ): Promise<ApiResult<true>> {
   for (const block of lesson.blocks) {
+    // Skip blocks the user hasn't filled in yet. Sending an empty video URL or
+    // a file block with no upload makes the backend reject the whole save (e.g.
+    // "Invalid URL"), which would otherwise block the user from leaving the
+    // lesson via the back arrow or breadcrumb.
+    if (block.type === "video" && !block.url.trim()) continue;
+    if (block.type === "text" && !block.html.trim()) continue;
+    if (block.type === "file" && !block.fileUrl) continue;
+
     const payload =
       block.type === "text"
         ? { content: block.html }
