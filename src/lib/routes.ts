@@ -48,3 +48,13 @@ export const studentPaths = {
   list: "/students",
   details: (studentId: string) => `/students/details${qs({ studentId })}`,
 };
+
+export const instructorPaths = {
+  list: "/instructors",
+  details: (instructorId: string) =>
+    `/instructors/details${qs({ instructorId })}`,
+};
+
+export const invitationPaths = {
+  list: "/invitations",
+};

@@ -1,5 +1,6 @@
 "use client";
 
+import { roleLabel } from "@/lib/api/auth";
 import {
   Box,
   Button,
@@ -265,7 +266,7 @@ function CourseDetailContent() {
           admin
             ? {
                 name: `${admin.firstName} ${admin.lastName}`.trim(),
-                role: admin.role === "superadmin" ? "Super Admin" : "Admin",
+                role: roleLabel(admin.role),
               }
             : undefined
         }

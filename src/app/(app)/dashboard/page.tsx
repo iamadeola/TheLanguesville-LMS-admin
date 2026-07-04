@@ -23,7 +23,7 @@ import { SearchInput } from "@/components/dashboard/search-input";
 import { SegmentedTabs } from "@/components/dashboard/segmented-tabs";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StudentsChart } from "@/components/dashboard/students-chart";
-import { isSuperAdmin } from "@/lib/api/auth";
+import { isSuperAdmin, roleLabel } from "@/lib/api/auth";
 import { useAdmin } from "@/lib/hooks/use-admin";
 
 const RANGE_TABS = [
@@ -74,7 +74,7 @@ export default function DashboardPage() {
           admin
             ? {
                 name: `${admin.firstName} ${admin.lastName}`.trim(),
-                role: admin.role === "superadmin" ? "Super Admin" : "Admin",
+                role: roleLabel(admin.role),
               }
             : undefined
         }

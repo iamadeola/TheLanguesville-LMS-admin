@@ -1,5 +1,6 @@
 "use client";
 
+import { roleLabel } from "@/lib/api/auth";
 import { Box, Flex, HStack, Stack, Text } from "@chakra-ui/react";
 import { Bell, UserCircle2, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
@@ -20,7 +21,7 @@ type BadgeStatus =
 export function PageTopBar({ notificationCount = 1 }: { notificationCount?: number }) {
   const { admin } = useAdmin();
   const name = admin ? `${admin.firstName} ${admin.lastName}`.trim() : "—";
-  const role = admin?.role === "superadmin" ? "Super Admin" : "Admin";
+  const role = roleLabel(admin?.role);
   return (
     <Flex
       h="72px"

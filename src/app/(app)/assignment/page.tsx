@@ -1,5 +1,6 @@
 "use client";
 
+import { roleLabel } from "@/lib/api/auth";
 import { Box, Flex, Grid, HStack, Skeleton, Stack, Text } from "@chakra-ui/react";
 import { FileText, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -209,7 +210,7 @@ export default function AssignmentListPage() {
   const userChip = admin
     ? {
         name: `${admin.firstName} ${admin.lastName}`.trim(),
-        role: admin.role === "superadmin" ? "Super Admin" : "Admin",
+        role: roleLabel(admin.role),
       }
     : undefined;
 

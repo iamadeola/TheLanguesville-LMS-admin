@@ -7,8 +7,10 @@ import {
   GraduationCap,
   LayoutGrid,
   LogOut,
+  Mail,
   Settings,
   Star,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import NextLink from "next/link";
@@ -27,6 +29,8 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Assignment", href: "/assignment", icon: Star },
   { label: "Analytics", href: "/analytics", icon: BarChart3 },
   { label: "Students", href: "/students", icon: GraduationCap },
+  { label: "Instructors", href: "/instructors", icon: UsersRound },
+  { label: "Invitations", href: "/invitations", icon: Mail },
 ];
 
 const SETTINGS_ITEM: NavItem = {

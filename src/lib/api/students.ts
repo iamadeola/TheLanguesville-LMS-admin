@@ -6,6 +6,7 @@ import { type ApiResult, apiClient } from "./client";
 
 export type CefrLevel = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 export type StudentStatus = "active" | "inactive";
+export type EnrollmentType = "sponsored-access" | "learner-paid";
 export type EnrollmentStatus = "active" | "completed" | "dropped";
 export type ActivityType =
   | "lesson_completed"
@@ -201,6 +202,38 @@ export async function listStudentActivity(
     `/students/${studentId}/activity${query ? `?${query}` : ""}`,
     { method: "GET" },
   );
+}
+
+/* ------------------------------------------------------------------ *
+ * Invite (student onboarding wizard) — the account is only created
+ * when the student accepts the emailed join link.
+ * ------------------------------------------------------------------ */
+
+export interface InviteStudentPayload {
+  firstName: string;
+  lastName: string;
+  email: string;
+  enrollmentType: EnrollmentType;
+  /** Min 1, from the course picker. */
+  courseIds: string[];
+}
+
+export interface InviteStudentData {
+  inviteId: string;
+  name: string;
+  email: string;
+  role: "student";
+  expiresAt: string;
+  message?: string;
+}
+
+export async function inviteStudent(
+  payload: InviteStudentPayload,
+): Promise<ApiResult<InviteStudentData>> {
+  return apiClient<InviteStudentData>("/students/invite", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 /* ------------------------------------------------------------------ *

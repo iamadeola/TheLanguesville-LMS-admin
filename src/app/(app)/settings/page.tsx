@@ -1,5 +1,6 @@
 "use client";
 
+import { roleLabel } from "@/lib/api/auth";
 import { Box, HStack, Text } from "@chakra-ui/react";
 import { useState } from "react";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
@@ -30,7 +31,7 @@ export default function SettingsPage() {
           admin
             ? {
                 name: `${admin.firstName} ${admin.lastName}`.trim(),
-                role: admin.role === "superadmin" ? "Super Admin" : "Admin",
+                role: roleLabel(admin.role),
               }
             : undefined
         }
