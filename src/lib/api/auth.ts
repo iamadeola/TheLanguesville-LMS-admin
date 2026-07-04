@@ -1,7 +1,14 @@
 import { apiClient, type ApiResult } from "./client";
 import { clearSession, setToken } from "@/lib/auth/session";
 
-export type AdminRole = "superadmin" | "admin";
+/** Instructors ARE admins — same collection, same login, `role: "instructor"`. */
+export type AdminRole = "superadmin" | "admin" | "instructor";
+
+export function roleLabel(role: AdminRole | undefined): string {
+  if (role === "superadmin") return "Super Admin";
+  if (role === "instructor") return "Instructor";
+  return "Admin";
+}
 
 export interface AdminProfile {
   id: string;
@@ -96,6 +103,38 @@ export async function inviteAdmin(
   return apiClient<InviteData>("/admin/invite", {
     method: "POST",
     body: JSON.stringify({ email }),
+  });
+}
+
+export interface InviteInstructorPayload {
+  email: string;
+  firstName: string;
+  lastName: string;
+  /** Step 2 of the wizard — required for instructor invites (400 if omitted). */
+  teachingLevel: "beginner" | "intermediate" | "advanced";
+}
+
+export interface InstructorInviteData {
+  inviteId: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: "instructor";
+  expiresAt: string;
+  message?: string;
+}
+
+/**
+ * Admin/superadmin: invite an instructor. Same endpoint as inviting an admin,
+ * just with `role: "instructor"` + the teaching level. The instructor accepts
+ * via the same /admin/accept-invite page and logs in exactly like an admin.
+ */
+export async function inviteInstructor(
+  payload: InviteInstructorPayload,
+): Promise<ApiResult<InstructorInviteData>> {
+  return apiClient<InstructorInviteData>("/admin/invite", {
+    method: "POST",
+    body: JSON.stringify({ ...payload, role: "instructor" }),
   });
 }
 

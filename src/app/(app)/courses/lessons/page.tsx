@@ -1,5 +1,6 @@
 "use client";
 
+import { roleLabel } from "@/lib/api/auth";
 import {
   AspectRatio,
   Box,
@@ -288,7 +289,7 @@ function LessonDetailContent() {
           admin
             ? {
                 name: `${admin.firstName} ${admin.lastName}`.trim(),
-                role: admin.role === "superadmin" ? "Super Admin" : "Admin",
+                role: roleLabel(admin.role),
               }
             : undefined
         }

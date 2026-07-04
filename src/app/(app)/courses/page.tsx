@@ -1,5 +1,6 @@
 "use client";
 
+import { roleLabel } from "@/lib/api/auth";
 import React from "react";
 import {
   Box,
@@ -251,7 +252,7 @@ export default function CoursesPage() {
           admin
             ? {
                 name: `${admin.firstName} ${admin.lastName}`.trim(),
-                role: admin.role === "superadmin" ? "Super Admin" : "Admin",
+                role: roleLabel(admin.role),
               }
             : undefined
         }

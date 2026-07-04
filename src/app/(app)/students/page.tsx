@@ -14,12 +14,14 @@ import {
   Text,
   Textarea,
 } from "@chakra-ui/react";
-import { Check, ChevronDown, Search, Users, X } from "lucide-react";
+import { Check, ChevronDown, Plus, Search, Users, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Avatar } from "@/components/shared/avatar";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
+import { InviteStudentModal } from "@/components/invitations/invite-student-modal";
+import { roleLabel } from "@/lib/api/auth";
 import { getApiErrorMessage } from "@/lib/api/client";
 import {
   type StudentCourseFilter,
@@ -291,6 +293,7 @@ export default function StudentsListPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const [students, setStudents] = useState<StudentListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -339,18 +342,33 @@ export default function StudentsListPage() {
   const userChip = admin
     ? {
         name: `${admin.firstName} ${admin.lastName}`.trim(),
-        role: admin.role === "superadmin" ? "Super Admin" : "Admin",
+        role: roleLabel(admin.role),
       }
     : undefined;
+
+  const inviteModal = inviteOpen ? (
+    <InviteStudentModal
+      via="students"
+      onClose={() => setInviteOpen(false)}
+      onSent={fetchList}
+      viewListLabel="View student list"
+      onViewList={() => setInviteOpen(false)}
+    />
+  ) : null;
 
   const courseLabel =
     courses.find((c) => c.id === courseId)?.title ?? ALL_COURSES;
 
   // Fully empty state: no students at all, with no active course/search filter.
-  if (!loading && !hasAny && !courseId && !search) {
-    return (
-      <Box>
-        <DashboardHeader title="Students" notificationCount={1} loading={adminLoading} user={userChip} />
+  // Rendered via a ternary inside one return so the invite modal keeps its
+  // tree position — and its state — when a refetch flips this flag.
+  const showEmptyState = !loading && !hasAny && !courseId && !search;
+
+  return (
+    <Box>
+      <DashboardHeader title="Students" notificationCount={1} loading={adminLoading} user={userChip} />
+
+      {showEmptyState ? (
         <Flex direction="column" align="center" justify="center" py="200px" gap={3} color="gray.400">
           <Users size={40} />
           <Stack gap={1} textAlign="center">
@@ -359,15 +377,12 @@ export default function StudentsListPage() {
             </Text>
             <Text fontSize="sm">Names and details of enrolled students will appear here</Text>
           </Stack>
+          <Button bg="#2E2F6F" color="white" rounded="full" h="48px" px={6} mt={3} fontWeight="medium" _hover={{ bg: "#262760" }} onClick={() => setInviteOpen(true)}>
+            <Plus size={18} />
+            Invite student
+          </Button>
         </Flex>
-      </Box>
-    );
-  }
-
-  return (
-    <Box>
-      <DashboardHeader title="Students" notificationCount={1} loading={adminLoading} user={userChip} />
-
+      ) : (
       <Box px={8} py={6}>
         <Flex justify="space-between" align="flex-start" mb={6}>
           <Stack gap={1}>
@@ -378,9 +393,15 @@ export default function StudentsListPage() {
               Track individual progress, engagement, and submissions for each student.
             </Text>
           </Stack>
-          <Button bg="#2E2F6F" color="white" rounded="full" h="48px" px={6} fontWeight="medium" _hover={{ bg: "#262760" }} onClick={() => setBulkOpen(true)}>
-            Send bulk message
-          </Button>
+          <HStack gap={3}>
+            <Button variant="outline" rounded="full" h="48px" px={6} fontWeight="medium" onClick={() => setBulkOpen(true)}>
+              Send bulk message
+            </Button>
+            <Button bg="#2E2F6F" color="white" rounded="full" h="48px" px={6} fontWeight="medium" _hover={{ bg: "#262760" }} onClick={() => setInviteOpen(true)}>
+              <Plus size={18} />
+              Invite student
+            </Button>
+          </HStack>
         </Flex>
 
         {/* Filter + search */}
@@ -536,8 +557,10 @@ export default function StudentsListPage() {
           </Flex>
         </Box>
       </Box>
+      )}
 
       {bulkOpen ? <BulkMessageModal onClose={() => setBulkOpen(false)} /> : null}
+      {inviteModal}
     </Box>
   );
 }

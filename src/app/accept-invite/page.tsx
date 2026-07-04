@@ -79,7 +79,7 @@ function AcceptedConfirmation() {
             You&apos;re all set 🎉
           </Heading>
           <Text fontSize="sm" color="gray.600" maxW="320px">
-            Your admin account is ready. Redirecting you to login…
+            Your account is ready. Redirecting you to login…
           </Text>
         </Stack>
         <Link
@@ -164,7 +164,7 @@ function AcceptInviteForm() {
           <AdminBadge />
           <Stack gap={0.5}>
             <Heading as="h1" size="md" color="gray.900">
-              Set up your admin account
+              Set up your account
             </Heading>
             <Text fontSize="sm" color="gray.600">
               Complete your details to finish your invite.
