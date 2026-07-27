@@ -138,6 +138,53 @@ export async function inviteInstructor(
   });
 }
 
+/** verify-reset-otp trades the emailed code for a short-lived (15m) token. */
+export interface VerifyResetOtpData {
+  resetToken: string;
+  message: string;
+}
+
+/**
+ * Reset step A: email → emails a 6-digit code. Always resolves successfully
+ * (even for unknown emails) so the endpoint can't be used to probe accounts —
+ * never branch the UI on whether an account exists.
+ */
+export async function forgotPassword(
+  email: string,
+): Promise<ApiResult<{ message: string }>> {
+  return apiClient<{ message: string }>("/admin/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+/** Reset step B: email + 6-digit code → short-lived reset token. */
+export async function verifyResetOtp(
+  email: string,
+  otp: string,
+): Promise<ApiResult<VerifyResetOtpData>> {
+  return apiClient<VerifyResetOtpData>("/admin/verify-reset-otp", {
+    method: "POST",
+    body: JSON.stringify({ email, otp }),
+  });
+}
+
+export interface ResetPasswordPayload {
+  resetToken: string;
+  password: string;
+  confirmPassword: string;
+}
+
+/** Reset step C: set the new password. Does NOT log the user in. */
+export async function resetPassword(
+  payload: ResetPasswordPayload,
+): Promise<ApiResult<{ message: string }>> {
+  return apiClient<{ message: string }>("/admin/reset-password", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function logout() {
   clearSession();
 }
