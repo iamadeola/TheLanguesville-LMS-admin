@@ -89,13 +89,19 @@ export function Sidebar() {
     <Flex
       direction="column"
       w="240px"
-      minH="100dvh"
+      flexShrink={0}
+      // Exactly one viewport tall, and pinned there. Without `alignSelf` the
+      // sidebar stretches to the full document height (it's a flex child of a
+      // row container), which pushes Settings/Logout to the bottom of the
+      // *page* — on a long screen you'd have to scroll to reach them.
+      h="100dvh"
+      alignSelf="flex-start"
+      position="sticky"
+      top={0}
       bg="#2E2F6F"
       color="white"
       px={4}
       py={5}
-      position="sticky"
-      top={0}
     >
       {/* Logo */}
       <HStack gap={2} px={2} mb={8} h="40px">
@@ -116,15 +122,22 @@ export function Sidebar() {
         </Text>
       </HStack>
 
-      {/* Main nav */}
-      <Stack gap={1} flex="1">
+      {/* Main nav — `minH={0}` lets it shrink below its content so it, rather
+          than the sidebar, absorbs the overflow on a short viewport. */}
+      <Stack gap={1} flex="1" minH={0} overflowY="auto">
         {NAV_ITEMS.map((item) => (
           <NavLink key={item.href} item={item} active={isActive(item.href)} />
         ))}
       </Stack>
 
-      {/* Footer nav */}
-      <Stack gap={1} pt={4} borderTopWidth="1px" borderColor="whiteAlpha.200">
+      {/* Footer nav — always in view, never scrolled away. */}
+      <Stack
+        gap={1}
+        pt={4}
+        flexShrink={0}
+        borderTopWidth="1px"
+        borderColor="whiteAlpha.200"
+      >
         <NavLink item={SETTINGS_ITEM} active={isActive(SETTINGS_ITEM.href)} />
         <HStack
           as="button"
