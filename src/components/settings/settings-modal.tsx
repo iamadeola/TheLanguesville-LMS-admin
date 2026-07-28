@@ -9,6 +9,9 @@ interface SettingsModalProps {
   onSave: () => void;
   onClose: () => void;
   saveLabel?: string;
+  /** Set while an async save is in flight — locks both buttons. */
+  saving?: boolean;
+  saveDisabled?: boolean;
 }
 
 export function SettingsModal({
@@ -17,6 +20,8 @@ export function SettingsModal({
   onSave,
   onClose,
   saveLabel = "Save",
+  saving = false,
+  saveDisabled = false,
 }: SettingsModalProps) {
   return (
     <Portal>
@@ -29,7 +34,7 @@ export function SettingsModal({
         alignItems="center"
         justifyContent="center"
         px={4}
-        onClick={onClose}
+        onClick={saving ? undefined : onClose}
       >
         <Box
           bg="white"
@@ -54,6 +59,14 @@ export function SettingsModal({
                 fontSize="sm"
                 fontWeight="semibold"
                 _hover={{ bg: "#262760" }}
+                _disabled={{
+                  bg: "#E5E7EB",
+                  color: "#9CA3AF",
+                  cursor: "not-allowed",
+                  _hover: { bg: "#E5E7EB" },
+                }}
+                loading={saving}
+                disabled={saving || saveDisabled}
                 onClick={onSave}
               >
                 {saveLabel}
@@ -64,6 +77,7 @@ export function SettingsModal({
                 h="48px"
                 fontSize="sm"
                 fontWeight="medium"
+                disabled={saving}
                 onClick={onClose}
               >
                 Cancel
