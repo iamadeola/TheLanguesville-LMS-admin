@@ -16,18 +16,27 @@ import {
 import NextLink from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { logout } from "@/lib/api/auth";
+import type { Permission } from "@/lib/api/settings";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 
 interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /** When set, the entry only renders if the admin holds this permission. */
+  requires?: Permission;
 }
 
 const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutGrid },
   { label: "Courses", href: "/courses", icon: BookOpen },
   { label: "Assignment", href: "/assignment", icon: Star },
-  { label: "Analytics", href: "/analytics", icon: BarChart3 },
+  {
+    label: "Analytics",
+    href: "/analytics",
+    icon: BarChart3,
+    requires: "analytics.view",
+  },
   { label: "Students", href: "/students", icon: GraduationCap },
   { label: "Instructors", href: "/instructors", icon: UsersRound },
   { label: "Invitations", href: "/invitations", icon: Mail },
@@ -74,6 +83,7 @@ function NavLink({ item, active }: NavLinkProps) {
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { has, loading: permissionsLoading } = usePermissions();
 
   const handleLogout = () => {
     logout();
@@ -84,6 +94,12 @@ export function Sidebar() {
     href === "/dashboard"
       ? pathname === "/dashboard"
       : pathname?.startsWith(href);
+
+  // Hold gated entries back until permissions resolve — appearing a beat late
+  // is less jarring than rendering then yanking one away.
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) => !item.requires || (!permissionsLoading && has(item.requires)),
+  );
 
   return (
     <Flex
@@ -125,7 +141,7 @@ export function Sidebar() {
       {/* Main nav — `minH={0}` lets it shrink below its content so it, rather
           than the sidebar, absorbs the overflow on a short viewport. */}
       <Stack gap={1} flex="1" minH={0} overflowY="auto">
-        {NAV_ITEMS.map((item) => (
+        {visibleNavItems.map((item) => (
           <NavLink key={item.href} item={item} active={isActive(item.href)} />
         ))}
       </Stack>

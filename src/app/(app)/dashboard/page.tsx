@@ -11,10 +11,17 @@ import {
   Stack,
   Text,
 } from "@chakra-ui/react";
-import { ArrowUp, BookOpen, FileText, Plus, UserPlus } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  FileText,
+  Plus,
+  UserPlus,
+} from "lucide-react";
 import NextLink from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { InviteAdminDialog } from "@/components/admin/invite-admin-dialog";
 import { CourseCard } from "@/components/dashboard/course-card";
 import { DashboardHeader } from "@/components/dashboard/dashboard-header";
@@ -23,21 +30,22 @@ import { SearchInput } from "@/components/dashboard/search-input";
 import { SegmentedTabs } from "@/components/dashboard/segmented-tabs";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StudentsChart } from "@/components/dashboard/students-chart";
+import {
+  type DashboardData,
+  type Period,
+  formatStatValue,
+  getDashboard,
+} from "@/lib/api/analytics";
 import { isSuperAdmin, roleLabel } from "@/lib/api/auth";
+import { getApiErrorMessage } from "@/lib/api/client";
 import { useAdmin } from "@/lib/hooks/use-admin";
+import { usePermissions } from "@/lib/hooks/use-permissions";
 
-const RANGE_TABS = [
-  { value: "12m", label: "12 months" },
-  { value: "30d", label: "30 days" },
-  { value: "7d", label: "7 days" },
+const RANGE_TABS: { value: Period; label: string }[] = [
+  { value: "12months", label: "12 months" },
+  { value: "30days", label: "30 days" },
+  { value: "7days", label: "7 days" },
 ];
-
-const CHART_DATA = Array.from({ length: 30 }, (_, i) => {
-  const day = i + 1;
-  const base = 800 + i * 14;
-  const wave = Math.sin(i * 0.9) * 60 + Math.cos(i * 0.5) * 30;
-  return { day, students: Math.round(base + wave) };
-});
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -56,20 +64,59 @@ function formatDateLine() {
   });
 }
 
+/** The API's lowercase `status` → the capitalised variant CourseCard takes. */
+function toCardStatus(status: string): "Published" | "Draft" {
+  return status.toLowerCase() === "published" ? "Published" : "Draft";
+}
+
 export default function DashboardPage() {
   const router = useRouter();
-  const [range, setRange] = useState("12m");
+  const [period, setPeriod] = useState<Period>("12months");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const { admin, loading } = useAdmin();
+  const { admin, loading: adminLoading } = useAdmin();
+  const { has, loading: permissionsLoading } = usePermissions();
+
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const firstName = admin?.firstName ?? "";
   const canInvite = isSuperAdmin(admin);
+  const canViewAnalytics = has("analytics.view");
+
+  const fetchData = useCallback(async () => {
+    if (permissionsLoading || !canViewAnalytics) return;
+    setLoading(true);
+    setError(null);
+    const result = await getDashboard(period);
+    if (result.success) {
+      setData(result.data);
+    } else {
+      setData(null);
+      setError(getApiErrorMessage(result, "Couldn't load dashboard data"));
+    }
+    setLoading(false);
+  }, [period, permissionsLoading, canViewAnalytics]);
+
+  useEffect(() => {
+    const id = setTimeout(fetchData, 0);
+    return () => clearTimeout(id);
+  }, [fetchData]);
+
+  // The metrics below all come from the gated analytics endpoint, so without
+  // the permission there is nothing to show but the greeting and shortcuts.
+  const metricsBlocked = !permissionsLoading && !canViewAnalytics;
+  const showSkeletons = permissionsLoading || loading;
+
+  const studentsChange = data?.studentsChart.changePercent ?? null;
+  const studentsUp = studentsChange !== null && studentsChange >= 0;
 
   return (
     <Box>
       <DashboardHeader
         title="Dashboard"
         notificationCount={3}
-        loading={loading}
+        loading={adminLoading}
         user={
           admin
             ? {
@@ -84,7 +131,7 @@ export default function DashboardPage() {
         <Stack gap={6}>
           {/* Greeting */}
           <Stack gap={1}>
-            {loading ? (
+            {adminLoading ? (
               <>
                 <Skeleton height="36px" width="320px" rounded="md" />
                 <Skeleton height="18px" width="240px" rounded="md" mt={1} />
@@ -106,164 +153,249 @@ export default function DashboardPage() {
           <Flex justify="space-between" align="center" wrap="wrap" gap={3}>
             <SegmentedTabs
               tabs={RANGE_TABS}
-              value={range}
-              onChange={setRange}
+              value={period}
+              onChange={(value) => setPeriod(value as Period)}
             />
             <SearchInput placeholder="Search courses, students" />
           </Flex>
 
-          {/* Stat cards */}
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} gap={4}>
-            {loading ? (
-              <>
-                {[...Array(4)].map((_, i) => (
-                  <Skeleton key={i} height="96px" rounded="lg" />
-                ))}
-              </>
-            ) : (
-              <>
-                <StatCard
-                  label="Total Courses"
-                  value={12}
-                  changePercent={-7.5}
-                />
-                <StatCard
-                  label="Total Students"
-                  value="1,240"
-                  changePercent={40}
-                />
-                <StatCard
-                  label="Lessons Published"
-                  value={48}
-                  changePercent={-10}
-                />
-                <StatCard
-                  label="Avg Completion"
-                  value="72%"
-                  changePercent={20}
-                />
-              </>
-            )}
-          </SimpleGrid>
-
-          {/* Active Courses + Quick Actions */}
-          <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4}>
-            <Box
+          {metricsBlocked ? (
+            <Flex
+              direction="column"
+              align="center"
+              justify="center"
+              py="60px"
+              gap={2}
               bg="white"
               rounded="lg"
               borderWidth="1px"
               borderColor="gray.200"
-              p={5}
+              color="gray.400"
             >
-              <Flex justify="space-between" align="center" mb={4}>
-                <Heading as="h3" size="md" color="gray.900">
-                  Active Courses
-                </Heading>
-                <Link
-                  as={NextLink}
-                  href="/courses"
-                  fontSize="sm"
-                  color="#F97461"
-                  fontWeight="semibold"
-                  _hover={{ textDecoration: "underline" }}
-                >
-                  View All
-                </Link>
-              </Flex>
-              <Flex gap={3} wrap="wrap">
-                <CourseCard
-                  level="A1"
-                  status="Published"
-                  title="French For Absolute Beginners"
-                  modules={8}
-                  lessons={32}
-                  hours={6}
-                  progressPercent={30}
-                />
-                <CourseCard
-                  level="A2"
-                  status="Published"
-                  title="Everyday Conversations"
-                  modules={6}
-                  lessons={24}
-                  hours={4}
-                  progressPercent={50}
-                />
-              </Flex>
-            </Box>
-
-            <Box
+              <FileText size={32} />
+              <Text fontWeight="semibold" color="gray.900">
+                Metrics aren&apos;t available for your role
+              </Text>
+              <Text fontSize="sm">
+                Ask an admin for the &ldquo;View analytics&rdquo; permission.
+              </Text>
+            </Flex>
+          ) : error ? (
+            <Flex
+              direction="column"
+              align="center"
+              justify="center"
+              py="60px"
+              gap={2}
               bg="white"
               rounded="lg"
               borderWidth="1px"
               borderColor="gray.200"
-              p={5}
+              color="gray.400"
             >
-              <Heading as="h3" size="md" color="gray.900" mb={4}>
-                Quick Actions
-              </Heading>
-              <Flex gap={3} wrap="wrap">
-                <QuickActionCard
-                  icon={Plus}
-                  title="Create Course"
-                  description="Start curriculum builder"
-                  onClick={() => router.push("/courses/new")}
-                />
-                <QuickActionCard
-                  icon={BookOpen}
-                  title="Add Lesson"
-                  description="Build content blocks"
-                />
-                <QuickActionCard
-                  icon={FileText}
-                  title="Assign Content"
-                  description="Set lessons & deadlines"
-                  iconColor="#F97461"
-                  iconBg="#FFE4DE"
-                />
-                {canInvite ? (
-                  <QuickActionCard
-                    icon={UserPlus}
-                    title="Invite Admin"
-                    description="Email a new admin invite"
-                    onClick={() => setInviteOpen(true)}
-                  />
-                ) : null}
-              </Flex>
-            </Box>
-          </SimpleGrid>
+              <FileText size={32} />
+              <Text fontWeight="semibold" color="gray.900">
+                Couldn&apos;t load dashboard data
+              </Text>
+              <Text fontSize="sm" maxW="420px" textAlign="center">
+                {error}
+              </Text>
+              <Box
+                as="button"
+                onClick={fetchData}
+                mt={2}
+                px={4}
+                py={2}
+                rounded="md"
+                borderWidth="1px"
+                borderColor="gray.200"
+                bg="white"
+                fontSize="sm"
+                fontWeight="medium"
+                color="gray.700"
+                cursor="pointer"
+                _hover={{ bg: "gray.50" }}
+              >
+                Try again
+              </Box>
+            </Flex>
+          ) : (
+            <>
+              {/* Stat cards */}
+              <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} gap={4}>
+                {showSkeletons || !data
+                  ? [...Array(4)].map((_, i) => (
+                      <Skeleton key={i} height="96px" rounded="lg" />
+                    ))
+                  : data.stats.map((stat) => (
+                      <StatCard
+                        key={stat.key}
+                        label={stat.label}
+                        value={formatStatValue(stat)}
+                        changePercent={stat.changePercent}
+                        unavailableReason={stat.unavailableReason}
+                      />
+                    ))}
+              </SimpleGrid>
 
-          {/* Students chart */}
-          <Box
-            bg="white"
-            rounded="lg"
-            borderWidth="1px"
-            borderColor="gray.200"
-            p={5}
-          >
-            <Stack gap={2} mb={4}>
-              <Heading as="h3" size="md" color="gray.900">
-                Total Students
-              </Heading>
-              <HStack gap={3}>
-                <Heading
-                  as="p"
-                  size="2xl"
-                  color="gray.900"
-                  fontWeight="semibold"
+              {/* Active Courses + Quick Actions */}
+              <SimpleGrid columns={{ base: 1, lg: 2 }} gap={4}>
+                <Box
+                  bg="white"
+                  rounded="lg"
+                  borderWidth="1px"
+                  borderColor="gray.200"
+                  p={5}
                 >
-                  1,240
-                </Heading>
-                <HStack gap={1} color="#16A34A">
-                  <ArrowUp size={14} />
-                  <Text fontSize="sm" fontWeight="medium">
-                    40%
-                  </Text>
-                </HStack>
-              </HStack>
-            </Stack>
-            <StudentsChart data={CHART_DATA} />
-          </Box>
+                  <Flex justify="space-between" align="center" mb={4}>
+                    <Heading as="h3" size="md" color="gray.900">
+                      Active Courses
+                    </Heading>
+                    <Link
+                      as={NextLink}
+                      href="/courses"
+                      fontSize="sm"
+                      color="#F97461"
+                      fontWeight="semibold"
+                      _hover={{ textDecoration: "underline" }}
+                    >
+                      View All
+                    </Link>
+                  </Flex>
+
+                  {showSkeletons || !data ? (
+                    <Flex gap={3} wrap="wrap">
+                      <Skeleton height="140px" rounded="lg" flex="1" />
+                      <Skeleton height="140px" rounded="lg" flex="1" />
+                    </Flex>
+                  ) : data.activeCourses.length === 0 ? (
+                    <Flex
+                      direction="column"
+                      align="center"
+                      justify="center"
+                      py="48px"
+                      gap={2}
+                      color="gray.400"
+                    >
+                      <BookOpen size={28} />
+                      <Text fontSize="sm" fontWeight="medium" color="gray.600">
+                        No active courses
+                      </Text>
+                      <Text fontSize="sm">
+                        Published courses will appear here
+                      </Text>
+                    </Flex>
+                  ) : (
+                    <Flex gap={3} wrap="wrap">
+                      {/* Two per row is what the card sizing is tuned for. */}
+                      {data.activeCourses.slice(0, 2).map((course) => (
+                        <CourseCard
+                          key={course.id}
+                          level={course.level}
+                          status={toCardStatus(course.status)}
+                          title={course.title}
+                          modules={course.modules}
+                          lessons={course.lessons}
+                          hours={course.hours}
+                          progressPercent={course.progressPercent}
+                        />
+                      ))}
+                    </Flex>
+                  )}
+                </Box>
+
+                <Box
+                  bg="white"
+                  rounded="lg"
+                  borderWidth="1px"
+                  borderColor="gray.200"
+                  p={5}
+                >
+                  <Heading as="h3" size="md" color="gray.900" mb={4}>
+                    Quick Actions
+                  </Heading>
+                  <Flex gap={3} wrap="wrap">
+                    <QuickActionCard
+                      icon={Plus}
+                      title="Create Course"
+                      description="Start curriculum builder"
+                      onClick={() => router.push("/courses/new")}
+                    />
+                    <QuickActionCard
+                      icon={BookOpen}
+                      title="Add Lesson"
+                      description="Build content blocks"
+                    />
+                    <QuickActionCard
+                      icon={FileText}
+                      title="Assign Content"
+                      description="Set lessons & deadlines"
+                      iconColor="#F97461"
+                      iconBg="#FFE4DE"
+                    />
+                    {canInvite ? (
+                      <QuickActionCard
+                        icon={UserPlus}
+                        title="Invite Admin"
+                        description="Email a new admin invite"
+                        onClick={() => setInviteOpen(true)}
+                      />
+                    ) : null}
+                  </Flex>
+                </Box>
+              </SimpleGrid>
+
+              {/* Students chart */}
+              <Box
+                bg="white"
+                rounded="lg"
+                borderWidth="1px"
+                borderColor="gray.200"
+                p={5}
+              >
+                <Stack gap={2} mb={4}>
+                  <Heading as="h3" size="md" color="gray.900">
+                    Total Students
+                  </Heading>
+                  {showSkeletons || !data ? (
+                    <Skeleton height="36px" width="180px" rounded="md" />
+                  ) : (
+                    <HStack gap={3}>
+                      <Heading
+                        as="p"
+                        size="2xl"
+                        color="gray.900"
+                        fontWeight="semibold"
+                      >
+                        {data.studentsChart.total.toLocaleString()}
+                      </Heading>
+                      {studentsChange !== null ? (
+                        <HStack
+                          gap={1}
+                          color={studentsUp ? "#16A34A" : "#EF4444"}
+                        >
+                          {studentsUp ? (
+                            <ArrowUp size={14} />
+                          ) : (
+                            <ArrowDown size={14} />
+                          )}
+                          <Text fontSize="sm" fontWeight="medium">
+                            {Math.abs(studentsChange)}%
+                          </Text>
+                        </HStack>
+                      ) : null}
+                    </HStack>
+                  )}
+                </Stack>
+
+                {showSkeletons || !data ? (
+                  <Skeleton height="280px" rounded="lg" />
+                ) : (
+                  <StudentsChart data={data.studentsChart.series} />
+                )}
+              </Box>
+            </>
+          )}
         </Stack>
       </Box>
 
