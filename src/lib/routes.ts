@@ -38,6 +38,11 @@ export const assignmentPaths = {
 
 export const settingsPaths = {
   index: "/settings",
+  /** Deep-links straight to a tab: /settings?tab=roles */
+  tab: (tab: "profile" | "roles" | "admins" | "notifications") =>
+    `/settings${qs({ tab })}`,
+  newRole: "/settings/roles/new",
+  roleDetail: (roleId: string) => `/settings/roles/details${qs({ roleId })}`,
 };
 
 export const analyticsPaths = {

@@ -6,51 +6,104 @@ import {
   Flex,
   HStack,
   Image,
+  Input,
   Skeleton,
   Stack,
   Text,
-  Textarea,
 } from "@chakra-ui/react";
-import { Check, ChevronDown, ChevronUp, Pencil, UserCircle2 } from "lucide-react";
+import { Eye, EyeOff, Pencil, UserCircle2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { TextField } from "@/components/assignment/wizard/wizard-bits";
 import { getApiErrorMessage } from "@/lib/api/client";
 import {
   type SettingsProfile,
-  type UpdateProfilePayload,
+  changePassword,
   getProfile,
   updateProfile,
 } from "@/lib/api/settings";
 import { uploadFile } from "@/lib/api/uploads";
 import { SettingsModal } from "./settings-modal";
 
-const TITLE_OPTIONS = ["Lecturer", "Instructor", "Professor", "Trainer", "Mentor", "Other"];
+/** Enforced client-side per the design's "under 10MB" copy. */
+const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
+const ALLOWED_AVATAR_TYPES = ["image/png", "image/jpeg", "image/gif"];
 
-/** The locally-editable slice of the profile. */
-interface ProfileDraft {
-  firstName: string;
-  middleName: string;
-  lastName: string;
-  professionalTitle: string;
-  department: string;
-  bio: string;
-  avatarUrl: string;
+function FieldLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <Text fontSize="sm" color="gray.700" mb={2}>
+      {children}
+    </Text>
+  );
 }
 
-function toDraft(p: SettingsProfile): ProfileDraft {
-  return {
-    firstName: p.firstName ?? "",
-    middleName: p.middleName ?? "",
-    lastName: p.lastName ?? "",
-    professionalTitle: p.professionalTitle ?? "",
-    department: p.department ?? "",
-    bio: p.bio ?? "",
-    avatarUrl: p.avatarUrl ?? "",
-  };
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <Input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      h="48px"
+      fontSize="sm"
+      borderColor="gray.200"
+      rounded="lg"
+      _placeholder={{ color: "gray.400" }}
+      _focus={{ borderColor: "#2E2F6F", outline: "none", boxShadow: "none" }}
+    />
+  );
 }
 
-function EditableRow({
+function PasswordInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <Box position="relative">
+      <Input
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        h="48px"
+        pr="44px"
+        fontSize="sm"
+        borderColor="gray.200"
+        rounded="lg"
+        _placeholder={{ color: "gray.400" }}
+        _focus={{ borderColor: "#2E2F6F", outline: "none", boxShadow: "none" }}
+      />
+      <Box
+        as="button"
+        onClick={() => setShow((s) => !s)}
+        position="absolute"
+        top="50%"
+        right="14px"
+        transform="translateY(-50%)"
+        color="gray.400"
+        cursor="pointer"
+        aria-label={show ? "Hide password" : "Show password"}
+      >
+        {show ? <EyeOff size={18} /> : <Eye size={18} />}
+      </Box>
+    </Box>
+  );
+}
+
+/** One row of the personal-information card. */
+function InfoRow({
   label,
   value,
   onEdit,
@@ -65,19 +118,29 @@ function EditableRow({
     <Flex
       justify="space-between"
       align="center"
+      gap={4}
       py={4}
       borderBottomWidth={last ? "0" : "1px"}
       borderColor="gray.100"
     >
-      <Text fontSize="sm" color="gray.500">
+      <Text fontSize="sm" color="gray.500" flexShrink={0}>
         {label}
       </Text>
-      <HStack gap={2}>
-        <Text fontSize="sm" color="gray.900" fontWeight="medium">
+      <HStack gap={2} minW={0}>
+        <Text fontSize="sm" color="gray.900" fontWeight="medium" truncate>
           {value || "—"}
         </Text>
         {onEdit ? (
-          <Box as="button" onClick={onEdit} color="gray.400" cursor="pointer" _hover={{ color: "#2E2F6F" }} display="flex">
+          <Box
+            as="button"
+            onClick={onEdit}
+            color="gray.400"
+            cursor="pointer"
+            display="flex"
+            flexShrink={0}
+            _hover={{ color: "#2E2F6F" }}
+            aria-label={`Edit ${label}`}
+          >
             <Pencil size={14} />
           </Box>
         ) : null}
@@ -86,43 +149,57 @@ function EditableRow({
   );
 }
 
+function SectionIntro({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <Stack gap={2} flex="1" minW="240px" maxW="380px">
+      <Text fontSize="2xl" fontWeight="bold" color="gray.900">
+        {title}
+      </Text>
+      <Text fontSize="sm" color="gray.500">
+        {subtitle}
+      </Text>
+    </Stack>
+  );
+}
+
 function ProfileSkeleton() {
   return (
-    <Stack gap={6} flex="1.4" minW="380px">
+    <Stack gap={6} flex="1.4" minW="360px" maxW="520px">
       <HStack gap={4}>
-        <Skeleton w="72px" h="72px" rounded="full" />
+        <Skeleton w="56px" h="56px" rounded="full" />
         <Stack gap={2}>
-          <Skeleton h="18px" w="160px" rounded="md" />
-          <Skeleton h="14px" w="220px" rounded="md" />
+          <Skeleton h="16px" w="140px" rounded="md" />
+          <Skeleton h="14px" w="260px" rounded="md" />
         </Stack>
       </HStack>
-      <Skeleton h="200px" rounded="xl" />
-      <Skeleton h="120px" rounded="lg" />
-      <Skeleton h="52px" rounded="full" />
+      <Skeleton h="190px" rounded="xl" />
     </Stack>
   );
 }
 
 export function ProfileTab() {
   const [profile, setProfile] = useState<SettingsProfile | null>(null);
-  const [draft, setDraft] = useState<ProfileDraft | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const avatarRef = useRef<HTMLInputElement>(null);
 
-  const [editing, setEditing] = useState<null | "name" | "title" | "department">(null);
-  const [nameDraft, setNameDraft] = useState({ firstName: "", middleName: "", lastName: "" });
-  const [titleDraft, setTitleDraft] = useState("");
-  const [titleOther, setTitleOther] = useState("");
-  const [titleOpen, setTitleOpen] = useState(false);
-  const [deptDraft, setDeptDraft] = useState("");
+  const [editingName, setEditingName] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState({
+    firstName: "",
+    middleName: "",
+    lastName: "",
+  });
+
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [savingPw, setSavingPw] = useState(false);
 
   useEffect(() => {
     getProfile().then((result) => {
       if (result.success) {
         setProfile(result.data);
-        setDraft(toDraft(result.data));
       } else {
         toast.error(getApiErrorMessage(result, "Couldn't load your profile"));
       }
@@ -130,314 +207,280 @@ export function ProfileTab() {
     });
   }, []);
 
-  if (loading || !draft || !profile) {
-    return (
-      <Flex gap={16} align="flex-start" wrap="wrap">
-        <Stack gap={2} flex="1" minW="260px" maxW="380px">
-          <Text fontSize="2xl" fontWeight="bold" color="gray.900">
-            Personal Information
-          </Text>
-          <Text fontSize="sm" color="gray.500">
-            Manage your profile details and information visible to students.
-          </Text>
-        </Stack>
-        <ProfileSkeleton />
-      </Flex>
-    );
-  }
-
-  const fullName = `${draft.firstName} ${draft.lastName}`.trim();
-
-  const openName = () => {
+  const openNameModal = () => {
+    if (!profile) return;
     setNameDraft({
-      firstName: draft.firstName,
-      middleName: draft.middleName,
-      lastName: draft.lastName,
+      firstName: profile.firstName ?? "",
+      middleName: profile.middleName ?? "",
+      lastName: profile.lastName ?? "",
     });
-    setEditing("name");
+    setEditingName(true);
   };
-  const openTitle = () => {
-    const known = TITLE_OPTIONS.includes(draft.professionalTitle);
-    setTitleDraft(draft.professionalTitle ? (known ? draft.professionalTitle : "Other") : "");
-    setTitleOther(known || !draft.professionalTitle ? "" : draft.professionalTitle);
-    setTitleOpen(false);
-    setEditing("title");
-  };
-  const openDept = () => {
-    setDeptDraft(draft.department);
-    setEditing("department");
+
+  const saveName = async () => {
+    if (savingName) return;
+    if (!nameDraft.firstName.trim() || !nameDraft.lastName.trim()) {
+      toast.error("First and last name are required");
+      return;
+    }
+    setSavingName(true);
+    const result = await updateProfile({
+      firstName: nameDraft.firstName.trim(),
+      middleName: nameDraft.middleName.trim(),
+      lastName: nameDraft.lastName.trim(),
+    });
+    if (result.success) {
+      setProfile(result.data);
+      setEditingName(false);
+      toast.success(result.message || "Profile updated successfully");
+    } else {
+      toast.error(getApiErrorMessage(result, "Couldn't update your name"));
+    }
+    setSavingName(false);
   };
 
   const handleAvatar = async (file: File | undefined) => {
     if (!file) return;
+    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+      toast.error("Only PNGs, JPEGs and GIFs are allowed");
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error("Image must be under 10MB");
+      return;
+    }
+
     setUploadingAvatar(true);
-    const result = await uploadFile(file);
+    // Two steps by design: store the bytes, then point the profile at the URL.
+    const upload = await uploadFile(file);
+    if (!upload.success) {
+      toast.error(getApiErrorMessage(upload, "Couldn't upload photo"));
+      setUploadingAvatar(false);
+      return;
+    }
+    const result = await updateProfile({ avatarUrl: upload.data.url });
     if (result.success) {
-      setDraft((d) => (d ? { ...d, avatarUrl: result.data.url } : d));
-      toast.success("Photo ready — Save changes to apply");
+      setProfile(result.data);
+      toast.success("Profile picture updated");
     } else {
-      toast.error(getApiErrorMessage(result, "Couldn't upload photo"));
+      toast.error(getApiErrorMessage(result, "Couldn't save your photo"));
     }
     setUploadingAvatar(false);
   };
 
-  const handleSave = async () => {
-    if (saving) return;
-    if (!draft.firstName.trim() || !draft.lastName.trim()) {
-      toast.error("First and last name are required");
-      return;
-    }
-    setSaving(true);
-    // Send only the editable slice (email/role are read-only).
-    const payload: UpdateProfilePayload = {
-      firstName: draft.firstName.trim(),
-      middleName: draft.middleName.trim(),
-      lastName: draft.lastName.trim(),
-      professionalTitle: draft.professionalTitle.trim(),
-      department: draft.department.trim(),
-      bio: draft.bio,
-      ...(draft.avatarUrl ? { avatarUrl: draft.avatarUrl } : {}),
-    };
-    const result = await updateProfile(payload);
+  const passwordValid =
+    oldPw.length > 0 && newPw.length >= 8 && newPw === confirmPw;
+
+  const savePassword = async () => {
+    if (!passwordValid || savingPw) return;
+    setSavingPw(true);
+    const result = await changePassword({
+      oldPassword: oldPw,
+      newPassword: newPw,
+      confirmPassword: confirmPw,
+    });
     if (result.success) {
-      setProfile(result.data);
-      setDraft(toDraft(result.data));
-      toast.success(result.message || "Profile updated successfully");
+      setOldPw("");
+      setNewPw("");
+      setConfirmPw("");
+      toast.success(result.message || "Password changed successfully");
     } else {
-      toast.error(getApiErrorMessage(result, "Couldn't update profile"));
+      toast.error(getApiErrorMessage(result, "Couldn't change password"));
     }
-    setSaving(false);
+    setSavingPw(false);
   };
 
-  const subtitle = [draft.professionalTitle, draft.department]
-    .filter(Boolean)
-    .join(" • ");
-
   return (
-    <Flex gap={16} align="flex-start" wrap="wrap">
-      {/* Left description */}
-      <Stack gap={2} flex="1" minW="260px" maxW="380px">
-        <Text fontSize="2xl" fontWeight="bold" color="gray.900">
-          Personal Information
-        </Text>
-        <Text fontSize="sm" color="gray.500">
-          Manage your profile details and information visible to students.
-        </Text>
-      </Stack>
+    <Stack gap={16}>
+      {/* ---------------- Personal information ---------------- */}
+      <Flex gap={16} align="flex-start" wrap="wrap">
+        <SectionIntro
+          title="Personal Information"
+          subtitle="Your personal information"
+        />
 
-      {/* Right form */}
-      <Stack gap={6} flex="1.4" minW="380px">
-        <HStack gap={4}>
-          <Box position="relative">
-            {draft.avatarUrl ? (
-              <Image
-                src={draft.avatarUrl}
-                alt={fullName}
-                w="72px"
-                h="72px"
-                rounded="full"
-                objectFit="cover"
-                opacity={uploadingAvatar ? 0.5 : 1}
+        {loading || !profile ? (
+          <ProfileSkeleton />
+        ) : (
+          <Stack gap={6} flex="1.4" minW="360px" maxW="520px">
+            <HStack gap={4}>
+              <Box position="relative" flexShrink={0}>
+                {profile.avatarUrl ? (
+                  <Image
+                    src={profile.avatarUrl}
+                    alt={profile.fullName}
+                    w="56px"
+                    h="56px"
+                    rounded="full"
+                    objectFit="cover"
+                    opacity={uploadingAvatar ? 0.5 : 1}
+                  />
+                ) : (
+                  <UserCircle2 size={56} color="#CBD5E1" strokeWidth={1.25} />
+                )}
+                <input
+                  ref={avatarRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif"
+                  hidden
+                  onChange={(e) => {
+                    handleAvatar(e.target.files?.[0]);
+                    // Let the same file be re-picked after a failed attempt.
+                    e.target.value = "";
+                  }}
+                />
+                <Flex
+                  as="button"
+                  onClick={
+                    uploadingAvatar ? undefined : () => avatarRef.current?.click()
+                  }
+                  position="absolute"
+                  bottom="-2px"
+                  right="-2px"
+                  w="22px"
+                  h="22px"
+                  rounded="full"
+                  bg="white"
+                  borderWidth="1px"
+                  borderColor="gray.200"
+                  align="center"
+                  justify="center"
+                  color="gray.500"
+                  cursor={uploadingAvatar ? "wait" : "pointer"}
+                  _hover={{ color: "#2E2F6F" }}
+                  aria-label="Change profile picture"
+                >
+                  <Pencil size={11} />
+                </Flex>
+              </Box>
+              <Stack gap={0.5}>
+                <Text fontSize="md" fontWeight="semibold" color="gray.900">
+                  Profile Picture
+                </Text>
+                <Text fontSize="sm" color="gray.500">
+                  PNGs, JPEGs and GIFs under 10MB are allowed
+                </Text>
+              </Stack>
+            </HStack>
+
+            <Box borderWidth="1px" borderColor="gray.200" rounded="xl" px={5} py={1}>
+              <InfoRow
+                label="Full Name"
+                value={profile.fullName}
+                onEdit={openNameModal}
               />
-            ) : (
-              <UserCircle2 size={72} color="#CBD5E1" strokeWidth={1.25} />
-            )}
-            <input
-              ref={avatarRef}
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => handleAvatar(e.target.files?.[0])}
+              <InfoRow label="Email" value={profile.email} />
+              {/* Read-only here — an admin's role is changed from Admin Management. */}
+              <InfoRow label="Role" value={profile.roleName} last />
+            </Box>
+          </Stack>
+        )}
+      </Flex>
+
+      {/* ---------------- Password ---------------- */}
+      <Flex gap={16} align="flex-start" wrap="wrap">
+        <SectionIntro
+          title="Password"
+          subtitle="Manage your account security, password settings."
+        />
+
+        <Stack gap={5} flex="1.4" minW="360px" maxW="520px">
+          <Box>
+            <FieldLabel>Old password</FieldLabel>
+            <PasswordInput
+              value={oldPw}
+              onChange={setOldPw}
+              placeholder="Enter old password"
             />
-            <Flex
-              as="button"
-              onClick={() => avatarRef.current?.click()}
-              position="absolute"
-              bottom="0"
-              right="0"
-              w="24px"
-              h="24px"
-              rounded="full"
-              bg="white"
-              borderWidth="1px"
-              borderColor="gray.200"
-              align="center"
-              justify="center"
-              color="gray.500"
-              cursor="pointer"
-              _hover={{ color: "#2E2F6F" }}
-            >
-              <Pencil size={12} />
-            </Flex>
           </Box>
-          <Stack gap={0.5}>
-            <Text fontSize="lg" fontWeight="semibold" color="gray.900">
-              {fullName || "—"}
+
+          <Box>
+            <FieldLabel>New Password</FieldLabel>
+            <PasswordInput
+              value={newPw}
+              onChange={setNewPw}
+              placeholder="Enter new password"
+            />
+            <Text
+              fontSize="xs"
+              mt={1.5}
+              color={newPw.length > 0 && newPw.length < 8 ? "#EF4444" : "gray.400"}
+            >
+              Must at least be 8 characters
             </Text>
-            {subtitle ? (
-              <Text fontSize="sm" color="gray.500">
-                {subtitle}
+          </Box>
+
+          <Box>
+            <FieldLabel>Confirm password</FieldLabel>
+            <PasswordInput
+              value={confirmPw}
+              onChange={setConfirmPw}
+              placeholder="Re-enter password"
+            />
+            {confirmPw.length > 0 && newPw !== confirmPw ? (
+              <Text fontSize="xs" mt={1.5} color="#EF4444">
+                Passwords do not match
               </Text>
             ) : null}
-            <Text fontSize="sm" color="gray.400">
-              {profile.email}
-            </Text>
-          </Stack>
-        </HStack>
+          </Box>
 
-        <Box borderWidth="1px" borderColor="gray.200" rounded="xl" px={5} py={1}>
-          <EditableRow label="Full Name" value={fullName} onEdit={openName} />
-          <EditableRow label="Email" value={profile.email} />
-          <EditableRow label="Professional Title" value={draft.professionalTitle} onEdit={openTitle} />
-          <EditableRow label="Department" value={draft.department} onEdit={openDept} last />
-        </Box>
-
-        <Stack gap={2}>
-          <Text fontSize="sm" color="gray.700">
-            Bio
-          </Text>
-          <Textarea
-            value={draft.bio}
-            maxLength={200}
-            onChange={(e) => setDraft((d) => (d ? { ...d, bio: e.target.value } : d))}
-            minH="120px"
-            resize="none"
-            fontSize="sm"
-            borderColor="gray.200"
-            rounded="lg"
-            _focus={{ borderColor: "#2E2F6F", outline: "none", boxShadow: "none" }}
-          />
-          <Text fontSize="xs" color="gray.400" textAlign="right">
-            {draft.bio.length}/200
-          </Text>
+          <Button
+            rounded="full"
+            h="52px"
+            mt={1}
+            fontWeight="medium"
+            bg={passwordValid ? "#2E2F6F" : "#E5E7EB"}
+            color={passwordValid ? "white" : "#9CA3AF"}
+            _hover={passwordValid ? { bg: "#262760" } : { bg: "#E5E7EB" }}
+            cursor={passwordValid ? "pointer" : "not-allowed"}
+            disabled={!passwordValid || savingPw}
+            loading={savingPw}
+            onClick={savePassword}
+          >
+            Save changes
+          </Button>
         </Stack>
+      </Flex>
 
-        <Button
-          bg="#2E2F6F"
-          color="white"
-          rounded="full"
-          h="52px"
-          fontWeight="medium"
-          _hover={{ bg: "#262760" }}
-          loading={saving}
-          disabled={saving}
-          onClick={handleSave}
-        >
-          Save changes
-        </Button>
-      </Stack>
-
-      {/* Edit Name modal */}
-      {editing === "name" ? (
+      {/* ---------------- "Edit Name" modal ---------------- */}
+      {editingName ? (
         <SettingsModal
           title="Edit Name"
-          onClose={() => setEditing(null)}
-          onSave={() => {
-            setDraft((d) => (d ? { ...d, ...nameDraft } : d));
-            setEditing(null);
-          }}
+          saving={savingName}
+          onSave={saveName}
+          onClose={() => setEditingName(false)}
         >
-          <Stack gap={0}>
-            <Text fontSize="sm" color="gray.700" mb={2}>First Name</Text>
-            <TextField value={nameDraft.firstName} onChange={(e) => setNameDraft((d) => ({ ...d, firstName: e.target.value }))} />
-          </Stack>
-          <Stack gap={0}>
-            <Text fontSize="sm" color="gray.700" mb={2}>
-              Middle Name <Text as="span" color="gray.400">(optional)</Text>
-            </Text>
-            <TextField placeholder="Enter middle name" value={nameDraft.middleName} onChange={(e) => setNameDraft((d) => ({ ...d, middleName: e.target.value }))} />
-          </Stack>
-          <Stack gap={0}>
-            <Text fontSize="sm" color="gray.700" mb={2}>Last Name</Text>
-            <TextField value={nameDraft.lastName} onChange={(e) => setNameDraft((d) => ({ ...d, lastName: e.target.value }))} />
-          </Stack>
+          <Box>
+            <FieldLabel>First Name</FieldLabel>
+            <TextInput
+              value={nameDraft.firstName}
+              placeholder="Enter first name"
+              onChange={(v) => setNameDraft((d) => ({ ...d, firstName: v }))}
+            />
+          </Box>
+          <Box>
+            <FieldLabel>
+              Middle Name{" "}
+              <Text as="span" color="gray.400">
+                (optional)
+              </Text>
+            </FieldLabel>
+            <TextInput
+              value={nameDraft.middleName}
+              placeholder="Enter middle name"
+              onChange={(v) => setNameDraft((d) => ({ ...d, middleName: v }))}
+            />
+          </Box>
+          <Box>
+            <FieldLabel>Last Name</FieldLabel>
+            <TextInput
+              value={nameDraft.lastName}
+              placeholder="Enter last name"
+              onChange={(v) => setNameDraft((d) => ({ ...d, lastName: v }))}
+            />
+          </Box>
         </SettingsModal>
       ) : null}
-
-      {/* Edit Professional Title modal */}
-      {editing === "title" ? (
-        <SettingsModal
-          title="Edit Professional Title"
-          onClose={() => setEditing(null)}
-          onSave={() => {
-            const finalTitle = titleDraft === "Other" ? titleOther.trim() : titleDraft;
-            setDraft((d) => (d ? { ...d, professionalTitle: finalTitle } : d));
-            setEditing(null);
-          }}
-        >
-          <Stack gap={0}>
-            <Text fontSize="sm" color="gray.700" mb={2}>Professional Title</Text>
-            <Box position="relative">
-              <Flex
-                as="button"
-                onClick={() => setTitleOpen((o) => !o)}
-                w="full"
-                h="48px"
-                px={4}
-                align="center"
-                justify="space-between"
-                borderWidth="1px"
-                borderColor="gray.200"
-                rounded="lg"
-                cursor="pointer"
-              >
-                <Text fontSize="sm" color="gray.900">{titleDraft || "Select title"}</Text>
-                {titleOpen ? <ChevronUp size={18} color="#9CA3AF" /> : <ChevronDown size={18} color="#9CA3AF" />}
-              </Flex>
-              {titleOpen ? (
-                <Box mt={2} borderWidth="1px" borderColor="gray.200" rounded="lg" overflow="hidden">
-                  {TITLE_OPTIONS.map((opt) => {
-                    const active = titleDraft === opt;
-                    return (
-                      <Flex
-                        key={opt}
-                        as="button"
-                        onClick={() => {
-                          setTitleDraft(opt);
-                          setTitleOpen(false);
-                        }}
-                        w="full"
-                        px={4}
-                        py={2.5}
-                        align="center"
-                        justify="space-between"
-                        bg={active ? "gray.50" : "white"}
-                        cursor="pointer"
-                        _hover={{ bg: "gray.50" }}
-                      >
-                        <Text fontSize="sm" color="gray.800">{opt}</Text>
-                        {active ? <Check size={16} color="#6366F1" /> : null}
-                      </Flex>
-                    );
-                  })}
-                </Box>
-              ) : null}
-            </Box>
-            {titleDraft === "Other" ? (
-              <Box mt={3}>
-                <TextField placeholder="Enter professional title" value={titleOther} onChange={(e) => setTitleOther(e.target.value)} />
-              </Box>
-            ) : null}
-          </Stack>
-        </SettingsModal>
-      ) : null}
-
-      {/* Edit Department modal */}
-      {editing === "department" ? (
-        <SettingsModal
-          title="Edit Department"
-          onClose={() => setEditing(null)}
-          onSave={() => {
-            setDraft((d) => (d ? { ...d, department: deptDraft } : d));
-            setEditing(null);
-          }}
-        >
-          <Stack gap={0}>
-            <Text fontSize="sm" color="gray.700" mb={2}>Department</Text>
-            <TextField value={deptDraft} onChange={(e) => setDeptDraft(e.target.value)} />
-          </Stack>
-        </SettingsModal>
-      ) : null}
-    </Flex>
+    </Stack>
   );
 }
