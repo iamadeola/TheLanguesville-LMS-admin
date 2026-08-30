@@ -482,7 +482,7 @@ export default function StudentDetailPage() {
           {enrolledCourses.length === 0 ? (
             <EmptyCard title="No enrolled courses yet" subtitle="Courses this student enrolled in will appear here" />
           ) : (
-            <Grid ref={carouselRef} templateColumns="repeat(auto-fill, minmax(0, 1fr))" gridAutoFlow="column" gridAutoColumns={{ base: "minmax(280px, 1fr)", md: "minmax(0, calc(50% - 10px))" }} gap={5} overflowX="auto" scrollSnapType="x mandatory" css={{ "&::-webkit-scrollbar": { display: "none" } }}>
+            <Grid ref={carouselRef} gridAutoFlow="column" gridAutoColumns={{ base: "minmax(280px, 1fr)", md: "calc(50% - 10px)" }} gap={5} overflowX="auto" scrollSnapType="x mandatory" css={{ "&::-webkit-scrollbar": { display: "none" } }}>
               {enrolledCourses.map((c) => (
                 <Box key={c.enrollmentId} borderWidth="1px" borderColor="gray.200" rounded="xl" p={5} scrollSnapAlign="start">
                   <Box display="inline-block" bg={LEVEL_BADGE.bg} color={LEVEL_BADGE.color} fontSize="xs" fontWeight="semibold" px={2.5} py={1} rounded="full" mb={3}>
